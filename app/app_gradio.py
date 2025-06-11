@@ -27,11 +27,11 @@ class DocumentationAgentInterface:
         if not api_key:
             return "❌ Error: Please provide OpenAI API key", "", "", ""
 
-        # Convert to absolute path and ensure it exists
+        # Use relative path directly (like the working scripts)
+        # Only convert to absolute if user provided an absolute path
         if not os.path.isabs(repo_path):
-            # If relative path, resolve it relative to the project root (parent of app dir)
-            project_root = Path(__file__).parent.parent
-            repo_path = str(project_root / repo_path)
+            # Keep relative path as-is for better compatibility
+            pass
 
         if not Path(repo_path).exists():
             return f"❌ Error: Repository path does not exist: {repo_path}", "", "", ""
@@ -271,7 +271,7 @@ def create_interface():
 
                         for filename, content in doc_outputs:
                             preview_content += (
-                                f"\n\n## 📄 {filename}\n\n{content[:500]}{'...' if len(content) > 500 else ''}\n\n---"
+                                f"\n\n## {filename}\n\n{content[:500]}{'...' if len(content) > 500 else ''}\n\n---"
                             )
 
                             # Create temporary files for download

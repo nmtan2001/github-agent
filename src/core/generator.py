@@ -236,9 +236,8 @@ class LLMDocumentationChain:
             """Generate a specific documentation section"""
             doc_type = state["current_doc_type"]
 
-            print(f"🔍 DEBUG: Generating {doc_type} section")
-            print(f"🔍 DEBUG: Repository: {state['code_analysis'].name}")
-            print(f"🔍 DEBUG: Modules count: {len(state['modules'])}")
+            # Debug info for section generation
+            pass
 
             try:
                 if doc_type == "api":
@@ -256,10 +255,12 @@ class LLMDocumentationChain:
                     state["generated_sections"] = {}
                 state["generated_sections"][doc_type] = section
 
-                print(f"✅ DEBUG: Successfully generated {doc_type} section ({len(section)} chars)")
+                # Section generated successfully
+                pass
 
             except Exception as e:
-                print(f"❌ DEBUG: Error generating {doc_type} section: {str(e)}")
+                # Log error without emojis to avoid encoding issues
+                print(f"ERROR: Error generating {doc_type} section: {str(e)}")
                 import traceback
 
                 traceback.print_exc()
@@ -278,8 +279,8 @@ class LLMDocumentationChain:
             doc_type = state["current_doc_type"]
 
             # Debug logging
-            print(f"🔍 DEBUG: Compiling {doc_type} document")
-            print(f"🔍 DEBUG: Generated sections keys: {list(state['generated_sections'].keys())}")
+            # Compiling document sections
+            pass
 
             # For now, just return the generated content directly without template formatting
             # since the LLM is already generating complete documentation
@@ -292,7 +293,7 @@ class LLMDocumentationChain:
                 else:
                     state["final_document"] = f"# {state['code_analysis'].name} Documentation\n\nNo content generated."
 
-            print(f"🔍 DEBUG: Final document length: {len(state['final_document'])} characters")
+            # Document compilation complete
 
             return state
 
@@ -692,7 +693,7 @@ class DocumentationGenerator:
         generated_docs = []
 
         for doc_type in doc_types:
-            print(f"🔄 Starting generation of {doc_type} documentation...")
+            print(f"Starting generation of {doc_type} documentation...")
             try:
                 # Create initial state
                 state = {
@@ -704,13 +705,8 @@ class DocumentationGenerator:
                     "final_document": "",
                 }
 
-                print(f"🔍 DEBUG: Initial state created for {doc_type}")
-
                 # Run the documentation generation graph
                 result = self.llm_chain.graph.invoke(state)
-
-                print(f"🔍 DEBUG: Graph execution completed for {doc_type}")
-                print(f"🔍 DEBUG: Result keys: {list(result.keys())}")
 
                 # Create GeneratedDocument
                 doc = GeneratedDocument(
@@ -728,17 +724,17 @@ class DocumentationGenerator:
                 )
 
                 generated_docs.append(doc)
-                print(f"✅ Successfully generated {doc_type} documentation ({doc.word_count} words)")
+                print(f"Successfully generated {doc_type} documentation ({doc.word_count} words)")
 
             except Exception as e:
-                print(f"❌ Error generating {doc_type} documentation: {str(e)}")
-                print(f"🔍 DEBUG: Full error details:")
+                print(f"Error generating {doc_type} documentation: {str(e)}")
+                print(f"Full error details:")
                 import traceback
 
                 traceback.print_exc()
                 continue
 
-        print(f"🎉 Completed generation of {len(generated_docs)}/{len(doc_types)} documentation types")
+        print(f"Completed generation of {len(generated_docs)}/{len(doc_types)} documentation types")
         return generated_docs
 
     def generate_single_module_doc(self, module: ModuleInfo) -> GeneratedDocument:
