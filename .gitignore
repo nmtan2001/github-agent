@@ -15,3 +15,4 @@ temp_*
 python-sdk/
 docs/
 demo_output/
+gradio_output/
