@@ -1,0 +1,47 @@
+[project]
+name = "github-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "anthropic>=0.18.0",
+    "ast-decompiler>=0.7.0",
+    "bert-score>=0.3.13",
+    "black>=23.0.0",
+    "click>=8.1.0",
+    "faiss-cpu>=1.7.4",
+    "gitpython>=3.1.40",
+    "gradio>=4.15.0",
+    "httpx>=0.25.0",
+    "isort>=5.12.0",
+    "langchain>=0.1.0",
+    "langchain-community>=0.0.20",
+    "langchain-openai>=0.1.0",
+    "langgraph>=0.0.30",
+    "llama-index>=0.10.0",
+    "markdown>=3.5.0",
+    "nltk>=3.8.1",
+    "numpy>=1.24.0",
+    "openai>=1.12.0",
+    "pandas>=2.0.0",
+    "pydantic>=2.5.0",
+    "pygithub>=2.1.0",
+    "pypdf2>=3.0.1",
+    "pytest>=7.4.0",
+    "python-docx>=1.1.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "rich>=13.7.0",
+    "rouge-score>=0.1.2",
+    "sentence-transformers>=2.2.2",
+    "streamlit>=1.29.0",
+    "tqdm>=4.66.0",
+    "tree-sitter>=0.20.0",
+    "tree-sitter-python>=0.20.0",
+]
+
+[tool.uv.workspace]
+members = [
+    "github-agent",
+]

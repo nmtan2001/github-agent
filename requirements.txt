@@ -1,0 +1,38 @@
+# LLM Agent for Code Documentation
+# Core LLM and AI frameworks
+langchain
+langchain-openai
+langchain-community
+langgraph
+
+# UI Framework
+gradio
+
+# Code Analysis
+tree-sitter
+tree-sitter-python
+gitpython
+
+# Text Processing and Similarity
+sentence-transformers
+bert-score
+numpy
+pandas
+
+# API and Web
+openai
+requests
+
+# Utilities
+python-dotenv
+tqdm
+click
+rich
+pydantic
+
+# Evaluation Metrics
+rouge-score
+nltk
+
+# Development
+pytest
