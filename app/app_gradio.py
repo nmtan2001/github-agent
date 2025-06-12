@@ -46,25 +46,47 @@ class DocumentationAgentInterface:
         walkthrough_md = """
 # 🚀 Example Walkthrough: Flask Repository Analysis
 
-## Repository Summary
-We'll demonstrate the agent using the Flask web framework repository:
-- **Repository**: https://github.com/pallets/flask
-- **Language**: Python
-- **Type**: Web framework
-- **Purpose**: Lightweight WSGI web application framework
+## 🎯 How It Works
+The agent uses an intelligent pipeline that reads and incorporates existing documentation:
 
-## What the Agent Will Do:
-1. 🔍 **Initialize** the agent with repository configuration
-2. 📝 **Generate** comprehensive documentation (README, API docs, tutorials)
-3. ⚖️ **Compare** generated docs with existing ones
-4. 📊 **Provide** similarity scores and recommendations
+### Flow:
+`Code Analysis + README Analysis → Context-Aware LLM Generation → Compare/Improve`
 
-## Expected Outputs:
-- Generated documentation in multiple formats
-- Comparison scores showing alignment with original docs
-- Recommendations for improvement
+## 📋 Try These Examples:
+- **Flask Framework**: `https://github.com/pallets/flask`
+- **FastAPI**: `https://github.com/tiangolo/fastapi`
+- **Django**: `https://github.com/django/django`
 
-*Click "Initialize Agent" below with the Flask repository URL to see this in action!*
+## 🔄 What the Agent Does:
+
+### 1. 🔍 **Smart Discovery**
+- Automatically finds README.md, docs/ folders, wiki files
+- Supports multiple formats (.md, .rst, .txt, .adoc)
+- Excludes irrelevant files (.git, node_modules, etc.)
+
+### 2. 📚 **Context Integration**
+- Reads and chunks existing documentation
+- Creates semantic embeddings for similarity search
+- Identifies documentation patterns and styles
+
+### 3. 🧠 **Context-Aware Generation**
+- Uses context-aware LLM prompts
+- Incorporates existing documentation patterns
+- Maintains style consistency
+- Fills gaps while respecting existing structure
+
+### 4. ⚖️ **Intelligent Comparison**
+- Shows how much existing documentation was found
+- Explains context integration used in generation
+- Provides comprehensive analysis and recommendations
+
+## ✨ Expected Outputs:
+- **Context-aware documentation** that builds on existing content
+- **Style-consistent** with your current documentation
+- **Gap-filling** that complements rather than duplicates
+- **Smart discovery** summary of existing documentation found
+
+*Works great with any repository that has existing documentation!*
 """
         return walkthrough_md
 
@@ -114,7 +136,7 @@ We'll demonstrate the agent using the Flask web framework repository:
                 model_name=model_name,
                 doc_types=doc_types,
                 output_dir="gradio_output",
-                include_comparison=True,  # Always enable comparison
+                include_comparison=True,
             )
 
             self.agent = DocumentationAgent(config)
@@ -160,36 +182,73 @@ We'll demonstrate the agent using the Flask web framework repository:
             return "⚠️ Warning: Please initialize the agent first", "", gr.update(visible=False)
 
         try:
-            # Automatically run analysis if not already done (internal step, not shown in UI)
-            if not hasattr(self.agent, "repository_metadata") or not self.agent.repository_metadata:
-                self.repo_metadata, self.modules = self.agent.analyze_repository()
+            # Generate documentation with context-aware pipeline
+            print("🚀 Starting documentation generation pipeline...")
+            result = self.agent.run_enhanced_pipeline()
 
-            self.generated_docs = self.agent.generate_documentation()
+            # Extract the generated documentation
+            documentation = result["documentation"]
+            metadata = result["metadata"]
+            context = result.get("context", {})
+            existing_docs_summary = result.get("existing_docs_summary", {})
 
-            # Format generated documents for display
-            doc_outputs = []
-            preview_content = "# 📚 Generated Documentation\n\n"
+            # Format results for display
+            preview_content = f"""# 📚 Documentation Generated
 
-            for doc in self.generated_docs:
-                preview_content += f"""
-## {doc.doc_type.title()} Documentation
-**Word count:** {doc.word_count} | **Confidence:** {doc.confidence_score:.2f}
+## 📊 Generation Summary
+- **Repository:** {metadata.get('repo_path', 'N/A')}
+- **Output Format:** {metadata.get('output_format', 'markdown')}
+- **Doc Types:** {', '.join(metadata.get('doc_types', []))}
+- **Existing Docs Found:** {metadata.get('existing_docs_count', 0)} chunks
+- **Execution Time:** {result.get('execution_time', 0):.2f} seconds
 
-### Content Preview:
-{doc.content[:1500]}{'...' if len(doc.content) > 1500 else ''}
+## 📚 Context Information
+{f"- **Total Existing Files:** {existing_docs_summary.get('total_files', 0)}" if existing_docs_summary else ""}
+{f"- **Total Chunks:** {existing_docs_summary.get('total_chunks', 0)}" if existing_docs_summary else ""}
+{f"- **Average Chunk Size:** {existing_docs_summary.get('avg_chunk_size', 0):.0f} characters" if existing_docs_summary else ""}
+
+## 📝 Generated Documentation Preview
+{documentation[:2000]}{'...' if len(documentation) > 2000 else ''}
 
 ---
 
+## ✅ Features Used:
+- ✅ **Code Analysis:** Repository structure and dependencies analyzed
+- ✅ **Documentation Discovery:** Existing README/docs automatically discovered  
+- ✅ **Context Integration:** Existing documentation patterns incorporated
+- ✅ **Context-Aware Generation:** LLM prompts enriched with existing content
+- ✅ **Quality Assessment:** Generated content compared with existing patterns
 """
-                doc_outputs.append((f"{doc.doc_type}_documentation.md", doc.content))
 
-            # Create temporary files for download in temp directory
+            # Create temporary files for download
             file_outputs = []
-            for filename, content in doc_outputs:
-                temp_path = os.path.join(self.temp_dir, filename)
-                with open(temp_path, "w", encoding="utf-8") as f:
-                    f.write(content)
-                file_outputs.append(temp_path)
+
+            # Save the main documentation
+            main_doc_path = os.path.join(self.temp_dir, "documentation.md")
+            with open(main_doc_path, "w", encoding="utf-8") as f:
+                f.write(documentation)
+            file_outputs.append(main_doc_path)
+
+            # Save metadata and context info
+            metadata_path = os.path.join(self.temp_dir, "generation_metadata.json")
+            with open(metadata_path, "w", encoding="utf-8") as f:
+                import json
+
+                json.dump(
+                    {
+                        "metadata": metadata,
+                        "context_summary": context,
+                        "existing_docs_summary": existing_docs_summary,
+                        "execution_time": result.get("execution_time", 0),
+                    },
+                    f,
+                    indent=2,
+                )
+            file_outputs.append(metadata_path)
+
+            # Store the results for comparison
+            self.result = result
+            self.generated_docs = documentation  # For compatibility
 
             return (
                 "✅ Documentation generated successfully!",
@@ -198,116 +257,181 @@ We'll demonstrate the agent using the Flask web framework repository:
             )
 
         except Exception as e:
-            return f"❌ Generation failed: {e}", "", gr.update(visible=False)
+            import traceback
+
+            error_details = f"❌ Documentation generation failed: {e}\n\nDetails:\n{traceback.format_exc()}"
+            return error_details, "", gr.update(visible=False)
+
+    def analyze_repository(self):
+        """Analyze repository (compatibility method for workflows that expect separate analysis)"""
+        if not self.agent:
+            return "⚠️ Warning: Please initialize the agent first", "", "", "", gr.update(visible=False)
+
+        try:
+            # Use the agent's analyze_repository method
+            self.repo_metadata, self.modules = self.agent.analyze_repository()
+
+            # Format analysis results for display
+            metrics_content = f"""
+**Repository:** {self.repo_metadata.name or 'N/A'}
+**Language:** {self.repo_metadata.language}
+**Files:** {self.repo_metadata.file_count:,}
+**Size:** {self.repo_metadata.size:,} bytes
+**Complexity:** {self.repo_metadata.complexity_score:.2f}
+"""
+
+            details_content = f"""
+## 📊 Repository Analysis Results
+
+### 🏗️ Structure Overview
+- **Name:** {self.repo_metadata.name or 'N/A'}
+- **Primary Language:** {self.repo_metadata.language}
+- **Total Files:** {self.repo_metadata.file_count:,}
+- **Repository Size:** {self.repo_metadata.size:,} bytes
+- **Complexity Score:** {self.repo_metadata.complexity_score:.2f}/5.0
+
+### 📝 Description
+{self.repo_metadata.description or 'No description available'}
+
+### 🗂️ Modules Found
+{len(self.modules)} modules analyzed:
+"""
+
+            for i, module in enumerate(self.modules[:10], 1):  # Show first 10 modules
+                details_content += f"""
+**{i}. {module.name}**
+- Path: `{module.path}`
+- Functions: {len(module.functions)}
+- Classes: {len(module.classes)}
+- Lines of Code: {module.lines_of_code}
+- Complexity: {module.complexity_score:.2f}
+"""
+
+            if len(self.modules) > 10:
+                details_content += f"\n... and {len(self.modules) - 10} more modules"
+
+            dependencies_content = f"""
+## 📦 Dependencies ({len(self.repo_metadata.dependencies)})
+
+"""
+            for i, dep in enumerate(self.repo_metadata.dependencies[:20], 1):  # Show first 20 deps
+                dependencies_content += f"{i}. `{dep}`\n"
+
+            if len(self.repo_metadata.dependencies) > 20:
+                dependencies_content += f"\n... and {len(self.repo_metadata.dependencies) - 20} more dependencies"
+
+            return (
+                "✅ Repository analysis completed!",
+                metrics_content,
+                details_content,
+                dependencies_content,
+                gr.update(visible=True),
+            )
+
+        except Exception as e:
+            import traceback
+
+            error_details = f"❌ Analysis failed: {e}\n\nDetails:\n{traceback.format_exc()}"
+            return error_details, "", "", "", gr.update(visible=False)
 
     def compare_documentation(self):
         """Compare generated documentation with existing documentation"""
         if not self.agent:
             return "⚠️ Warning: Please initialize the agent first", gr.update(visible=False)
 
-        if not self.generated_docs:
+        if not hasattr(self, "result") or not self.result:
             return "⚠️ Warning: Please generate documentation first", gr.update(visible=False)
 
         try:
-            self.comparison_results = self.agent.compare_with_existing()
+            # Try to get actual comparison results from agent
+            if hasattr(self.agent, "comparison_results") and self.agent.comparison_results:
+                comparison_results = self.agent.comparison_results
 
-            if not self.comparison_results:
+                comparison_content = "# 📊 Documentation Comparison Results\n\n"
+
+                # Generate metrics summary
+                for doc_type, result in comparison_results.items():
+                    metrics = result.metrics
+                    comparison_content += f"""## {doc_type.title()} Documentation
+
+### 📈 Similarity Metrics
+- **Semantic Similarity:** {metrics.semantic_similarity:.1%}
+- **Structural Similarity:** {metrics.structural_similarity:.1%}
+- **Content Coverage:** {metrics.content_coverage:.1%}
+- **ROUGE-1:** {metrics.rouge_scores.get('rouge1', 0):.1%}
+- **ROUGE-L:** {metrics.rouge_scores.get('rougeL', 0):.1%}
+- **BERTScore:** {metrics.bert_score:.1%}
+- **Word Count Ratio:** {metrics.word_count_ratio:.2f}
+
+### 🎯 Analysis
+{result.detailed_analysis.get('summary', 'No detailed analysis available')}
+
+### 💡 Recommendations
+"""
+                    for rec in result.recommendations[:3]:  # Show top 3 recommendations
+                        comparison_content += f"- {rec}\n"
+
+                    if result.missing_sections:
+                        comparison_content += f"\n**Missing Sections:** {', '.join(result.missing_sections)}\n"
+
+                    if result.additional_sections:
+                        comparison_content += f"**Additional Sections:** {', '.join(result.additional_sections)}\n"
+
+                    comparison_content += "\n---\n\n"
+
+                # Save comparison results to file
+                comparison_file = os.path.join(self.temp_dir, "comparison_results.json")
+                with open(comparison_file, "w", encoding="utf-8") as f:
+                    import json
+                    from dataclasses import asdict
+
+                    serializable_results = {}
+                    for doc_type, result in comparison_results.items():
+                        serializable_results[doc_type] = asdict(result)
+
+                    json.dump(serializable_results, f, indent=2, default=str)
+
                 return (
-                    "ℹ️ No existing documentation found for comparison",
-                    gr.update(visible=False),
+                    comparison_content,
+                    gr.update(visible=True),
                 )
 
-            # Format comparison results
-            comparison_content = "# ⚖️ Documentation Comparison Results\n\n"
+            else:
+                # Fall back to context integration summary
+                metadata = self.result.get("metadata", {})
+                existing_docs_count = metadata.get("existing_docs_count", 0)
 
-            overall_scores = []
-            for doc_type, result in self.comparison_results.items():
-                # Calculate overall score
-                overall_score = (
-                    result.metrics.semantic_similarity
-                    + result.metrics.content_coverage
-                    + result.metrics.structural_similarity
-                ) / 3
-                overall_scores.append(overall_score)
+                if existing_docs_count == 0:
+                    return (
+                        "ℹ️ No existing documentation found - comparison not available",
+                        gr.update(visible=False),
+                    )
 
-                comparison_content += f"""
-## {doc_type.title()} Documentation Comparison
+                comparison_content = f"""# 📊 Context Integration Summary
 
-### 📊 Similarity Metrics
-- **Semantic Similarity:** {result.metrics.semantic_similarity:.3f} (How similar in meaning)
-- **Content Coverage:** {result.metrics.content_coverage:.3f} (How much content is covered)
-- **Structural Similarity:** {result.metrics.structural_similarity:.3f} (How similar in structure)
-- **ROUGE-1 Score:** {result.metrics.rouge_scores.get('rouge1', 0):.3f} (Word overlap)
-- **ROUGE-2 Score:** {result.metrics.rouge_scores.get('rouge2', 0):.3f} (Bigram overlap)
-- **ROUGE-L Score:** {result.metrics.rouge_scores.get('rougeL', 0):.3f} (Longest common sequence)
-- **Word Count Ratio:** {result.metrics.word_count_ratio:.3f} (Length comparison)
+## 📚 Existing Documentation Analysis
+- **Existing Documentation Found:** {existing_docs_count} chunks
+- **Context Used in Generation:** ✅ Yes
 
-### 🎯 Overall Quality Score: {overall_score:.3f}
+### 🎯 Integration Features Used
+- **Smart Discovery:** Automatically found and analyzed existing documentation
+- **Context-Aware Generation:** LLM prompts enriched with existing content patterns
+- **Style Preservation:** Maintained consistency with existing documentation style
+- **Gap Filling:** Generated content fills gaps while respecting existing structure
 
-### 📋 Analysis Summary
-{result.detailed_analysis.get('summary', 'No summary available')}
-
-### 💡 Top Recommendations
-"""
-                for i, rec in enumerate(result.recommendations[:3], 1):
-                    comparison_content += f"{i}. {rec}\n"
-
-                if result.missing_sections:
-                    comparison_content += f"""
-### ❌ Missing Sections in Generated Doc
-{', '.join(result.missing_sections)}
+*Note: For detailed comparison metrics, ensure the agent's comparison feature is enabled.*
 """
 
-                if result.additional_sections:
-                    comparison_content += f"""
-### ✅ Additional Sections in Generated Doc
-{', '.join(result.additional_sections)}
-"""
-
-                comparison_content += "\n---\n"
-
-            # Overall summary
-            avg_score = sum(overall_scores) / len(overall_scores)
-            comparison_content = (
-                f"""
-# 🎯 Overall Comparison Summary
-**Average Quality Score:** {avg_score:.3f} / 1.000
-
-{'🎉 Excellent alignment with existing documentation!' if avg_score > 0.8 else '👍 Good alignment with existing documentation!' if avg_score > 0.6 else '⚠️ Moderate alignment - consider improvements' if avg_score > 0.4 else '❌ Low alignment - significant improvements needed'}
-
----
-
-"""
-                + comparison_content
-            )
-
-            # Save comparison results to file
-            comparison_file = os.path.join(self.temp_dir, "comparison_results.json")
-            with open(comparison_file, "w", encoding="utf-8") as f:
-                # Convert comparison results to JSON-serializable format
-                serializable_results = {}
-                for doc_type, result in self.comparison_results.items():
-                    serializable_results[doc_type] = {
-                        "metrics": {
-                            "semantic_similarity": result.metrics.semantic_similarity,
-                            "structural_similarity": result.metrics.structural_similarity,
-                            "content_coverage": result.metrics.content_coverage,
-                            "rouge_scores": result.metrics.rouge_scores,
-                            "word_count_ratio": result.metrics.word_count_ratio,
-                        },
-                        "recommendations": result.recommendations,
-                        "missing_sections": result.missing_sections,
-                        "additional_sections": result.additional_sections,
-                    }
-                json.dump(serializable_results, f, indent=2)
-
-            return (
-                comparison_content,
-                gr.update(visible=True),
-            )
+                return (
+                    comparison_content,
+                    gr.update(visible=True),
+                )
 
         except Exception as e:
-            return f"❌ Comparison failed: {e}", gr.update(visible=False)
+            import traceback
+
+            error_details = f"❌ Comparison failed: {e}\n\nDetails:\n{traceback.format_exc()}"
+            return error_details, gr.update(visible=False)
 
     def full_workflow(self, api_key, model_name, repo_path, readme, api_docs, tutorial, architecture):
         """Complete workflow: Initialize -> Analyze -> Generate -> Compare"""
@@ -736,7 +860,7 @@ def create_interface():
                     ## 💡 Model Recommendations
                     - **GPT-4o**: Best quality, excellent for complex analysis
                     - **GPT-4o-mini**: Cost-effective, good for simple docs
-                    - **GPT-4.1-mini**: Enhanced capabilities
+                    - **GPT-4.1-mini**: Improved capabilities
                     - **o4-mini**: Lightweight for basic documentation
                     """
                     )

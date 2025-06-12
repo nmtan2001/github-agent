@@ -6,14 +6,16 @@ with support for different documentation types and templates.
 """
 
 import os
+import logging
 from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 import json
 
 from langchain_community.llms import OpenAI
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 
 from langchain.schema import BaseOutputParser
 from langchain_community.document_loaders import TextLoader
@@ -24,7 +26,12 @@ from langgraph.graph import Graph, StateGraph, END
 from langgraph.graph.message import add_messages
 from typing_extensions import Annotated, TypedDict
 
-from .analyzer import RepositoryMetadata, ModuleInfo, FunctionInfo, ClassInfo
+from .analyzer import RepositoryMetadata, ModuleInfo, FunctionInfo, ClassInfo, CodeAnalyzer
+from .document_reader import DocumentReader, DocumentChunk
+from ..utils.templates import TemplateManager
+from ..utils.llm import LLMManager
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -52,7 +59,6 @@ class GeneratedDocument:
     content: str
     doc_type: str
     metadata: Dict[str, Any]
-    confidence_score: float
     word_count: int
 
 
@@ -719,7 +725,6 @@ class DocumentationGenerator:
                         "generation_model": self.config.model_name,
                         "modules_count": len(modules),
                     },
-                    confidence_score=0.85,  # Could be calculated based on model certainty
                     word_count=len(result["final_document"].split()),
                 )
 
@@ -765,7 +770,7 @@ class DocumentationGenerator:
             """,
         )
 
-        chain = LLMChain(llm=self.llm_chain.llm, prompt=prompt)
+        chain = prompt | self.llm_chain.llm | StrOutputParser()
 
         # Format functions
         functions_text = ""
@@ -787,11 +792,13 @@ class DocumentationGenerator:
                 cls_text += f"\n  {cls.docstring}"
             classes_text += cls_text + "\n"
 
-        result = chain.run(
-            module_name=module.name,
-            module_content=module.docstring or "No description available",
-            functions=functions_text,
-            classes=classes_text,
+        result = chain.invoke(
+            {
+                "module_name": module.name,
+                "module_content": module.docstring or "No description available",
+                "functions": functions_text,
+                "classes": classes_text,
+            }
         )
 
         return GeneratedDocument(
@@ -799,7 +806,6 @@ class DocumentationGenerator:
             content=result,
             doc_type="module",
             metadata={"module_path": module.path},
-            confidence_score=0.8,
             word_count=len(result.split()),
         )
 
@@ -827,13 +833,15 @@ class DocumentationGenerator:
             """,
         )
 
-        chain = LLMChain(llm=self.llm_chain.llm, prompt=prompt)
+        chain = prompt | self.llm_chain.llm | StrOutputParser()
 
-        result = chain.run(
-            func_name=function.name,
-            parameters=", ".join(function.parameters),
-            docstring=function.docstring or "No docstring available",
-            complexity=function.complexity,
+        result = chain.invoke(
+            {
+                "func_name": function.name,
+                "parameters": ", ".join(function.parameters),
+                "docstring": function.docstring or "No docstring available",
+                "complexity": function.complexity,
+            }
         )
 
         return result
@@ -863,8 +871,392 @@ class DocumentationGenerator:
             """,
         )
 
-        chain = LLMChain(llm=self.llm_chain.llm, prompt=prompt)
+        chain = prompt | self.llm_chain.llm | StrOutputParser()
 
-        result = chain.run(existing_doc=existing_doc, code_context=code_context)
+        result = chain.invoke({"existing_doc": existing_doc, "code_context": code_context})
 
         return result
+
+
+@dataclass
+class DocumentationContext:
+    """Context information for documentation generation."""
+
+    existing_docs: List[DocumentChunk]
+    code_analysis: Dict[str, Any]
+    similar_content: List[Dict[str, Any]]
+    doc_summary: Dict[str, Any]
+
+
+class EnhancedDocumentationGenerator:
+    """
+    Enhanced documentation generator that reads and incorporates existing
+    documentation during the generation process.
+    """
+
+    def __init__(
+        self,
+        llm_manager: Optional[LLMManager] = None,
+        template_manager: Optional[TemplateManager] = None,
+        chunk_size: int = 1000,
+        chunk_overlap: int = 200,
+    ):
+        """Initialize the enhanced documentation generator."""
+        self.llm_manager = llm_manager or LLMManager()
+        self.template_manager = template_manager or TemplateManager()
+        self.document_reader = DocumentReader(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        self.vector_index = None
+        self.existing_docs = []
+
+    def load_existing_documentation(self, docs_paths: List[str], exclude_patterns: Optional[List[str]] = None) -> bool:
+        """
+        Load existing documentation from specified paths.
+
+        Args:
+            docs_paths: List of paths to documentation directories/files
+            exclude_patterns: Patterns to exclude from loading
+
+        Returns:
+            True if documentation was loaded successfully
+        """
+        try:
+            self.existing_docs = []
+            exclude_patterns = exclude_patterns or ["*.git/*", "*.node_modules/*", "*.venv/*", "*/__pycache__/*"]
+
+            for docs_path in docs_paths:
+                if not os.path.exists(docs_path):
+                    logger.warning(f"Documentation path not found: {docs_path}")
+                    continue
+
+                logger.info(f"Loading documentation from: {docs_path}")
+
+                if os.path.isfile(docs_path):
+                    # Single file - load with LlamaIndex
+                    chunks = self.document_reader.read_with_llamaindex(
+                        str(Path(docs_path).parent), recursive=False, exclude_patterns=exclude_patterns
+                    )
+                else:
+                    # Directory - use both loaders for comprehensive coverage
+                    chunks_langchain = self.document_reader.read_documentation_directory(
+                        docs_path, recursive=True, exclude_patterns=exclude_patterns
+                    )
+
+                    chunks_llamaindex = self.document_reader.read_with_llamaindex(
+                        docs_path, recursive=True, exclude_patterns=exclude_patterns
+                    )
+
+                    # Combine and deduplicate
+                    chunks = self._deduplicate_chunks(chunks_langchain + chunks_llamaindex)
+
+                self.existing_docs.extend(chunks)
+                logger.info(f"Loaded {len(chunks)} chunks from {docs_path}")
+
+            if self.existing_docs:
+                # Create vector index for semantic search
+                self.vector_index = self.document_reader.create_vector_index(self.existing_docs)
+
+                # Log summary
+                summary = self.document_reader.get_documentation_summary(self.existing_docs)
+                logger.info(f"Documentation loaded: {summary}")
+
+                return True
+            else:
+                logger.warning("No documentation content was loaded")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error loading existing documentation: {e}")
+            return False
+
+    def _deduplicate_chunks(self, chunks: List[DocumentChunk]) -> List[DocumentChunk]:
+        """Remove duplicate chunks based on content and source."""
+        seen = set()
+        unique_chunks = []
+
+        for chunk in chunks:
+            # Create a unique identifier based on content hash and source
+            identifier = (hash(chunk.content), chunk.source, chunk.chunk_index)
+            if identifier not in seen:
+                seen.add(identifier)
+                unique_chunks.append(chunk)
+
+        logger.info(f"Deduplicated {len(chunks)} chunks to {len(unique_chunks)} unique chunks")
+        return unique_chunks
+
+    def generate_documentation_with_context(
+        self,
+        repo_path: str,
+        output_format: str = "markdown",
+        doc_types: Optional[List[str]] = None,
+        context_similarity_threshold: float = 0.7,
+    ) -> Dict[str, Any]:
+        """
+        Generate documentation using both code analysis and existing documentation context.
+
+        Args:
+            repo_path: Path to the repository
+            output_format: Output format (markdown, rst, etc.)
+            doc_types: Types of documentation to generate
+            context_similarity_threshold: Threshold for including similar existing content
+
+        Returns:
+            Generated documentation with context information
+        """
+        try:
+            logger.info(f"Generating documentation with context for: {repo_path}")
+
+            # 1. Analyze the code
+            logger.info("Analyzing code structure...")
+            code_analyzer = CodeAnalyzer(repo_path)
+            repository_metadata, modules = code_analyzer.analyze_repository()
+
+            # Convert to dict format expected by the rest of the method
+            code_analysis = {
+                "name": repository_metadata.name,
+                "description": repository_metadata.description,
+                "language": repository_metadata.language,
+                "primary_language": repository_metadata.language,
+                "size": repository_metadata.size,
+                "file_count": repository_metadata.file_count,
+                "dependencies": repository_metadata.dependencies,
+                "entry_points": repository_metadata.entry_points,
+                "test_coverage": repository_metadata.test_coverage,
+                "complexity_score": repository_metadata.complexity_score,
+                "modules": [asdict(module) for module in modules],
+            }
+
+            # 2. Prepare documentation context
+            context = self._prepare_documentation_context(code_analysis, context_similarity_threshold)
+
+            # 3. Generate documentation sections
+            doc_types = doc_types or ["overview", "installation", "usage", "api", "contributing"]
+            generated_docs = {}
+
+            for doc_type in doc_types:
+                logger.info(f"Generating {doc_type} documentation...")
+                section = self._generate_section_with_context(doc_type, context, output_format)
+                generated_docs[doc_type] = section
+
+            # 4. Compile final documentation
+            final_doc = self._compile_documentation(generated_docs, context, output_format)
+
+            return {
+                "documentation": final_doc,
+                "context": asdict(context),
+                "metadata": {
+                    "repo_path": repo_path,
+                    "output_format": output_format,
+                    "doc_types": doc_types,
+                    "existing_docs_count": len(context.existing_docs),
+                    "code_analysis_summary": self._summarize_code_analysis(code_analysis),
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating documentation with context: {e}")
+            raise
+
+    def _prepare_documentation_context(
+        self, code_analysis: Dict[str, Any], similarity_threshold: float
+    ) -> DocumentationContext:
+        """Prepare comprehensive context for documentation generation."""
+
+        # Find similar existing content based on code analysis
+        similar_content = []
+        if self.vector_index and self.existing_docs:
+            # Search for content related to key project aspects
+            search_queries = [
+                f"installation guide for {code_analysis.get('name', 'project')}",
+                f"API reference {code_analysis.get('primary_language', '')}",
+                f"usage examples {code_analysis.get('name', '')}",
+                "getting started tutorial",
+                "contributing guidelines",
+            ]
+
+            for query in search_queries:
+                results = self.document_reader.search_similar_content(query, self.vector_index, top_k=3)
+                # Filter by similarity threshold
+                filtered_results = [r for r in results if r.get("score", 0) >= similarity_threshold]
+                similar_content.extend(filtered_results)
+
+        # Remove duplicates
+        unique_similar = []
+        seen_content = set()
+        for item in similar_content:
+            content_hash = hash(item["content"])
+            if content_hash not in seen_content:
+                seen_content.add(content_hash)
+                unique_similar.append(item)
+
+        # Get documentation summary
+        doc_summary = self.document_reader.get_documentation_summary(self.existing_docs)
+
+        return DocumentationContext(
+            existing_docs=self.existing_docs,
+            code_analysis=code_analysis,
+            similar_content=unique_similar,
+            doc_summary=doc_summary,
+        )
+
+    def _generate_section_with_context(self, doc_type: str, context: DocumentationContext, output_format: str) -> str:
+        """Generate a documentation section using context."""
+
+        # Get relevant existing content for this section
+        relevant_content = self._get_relevant_content_for_section(doc_type, context)
+
+        # Prepare prompt with context
+        prompt = self._build_context_aware_prompt(doc_type, context.code_analysis, relevant_content, output_format)
+
+        # Generate content using LLM
+        try:
+            response = self.llm_manager.generate_content(prompt, max_tokens=2000, temperature=0.3)
+            return response.strip()
+        except Exception as e:
+            logger.error(f"Error generating {doc_type} section: {e}")
+            return f"Error generating {doc_type} section: {str(e)}"
+
+    def _get_relevant_content_for_section(self, doc_type: str, context: DocumentationContext) -> List[Dict[str, Any]]:
+        """Get existing content relevant to a specific documentation section."""
+
+        # Define keywords for different section types
+        section_keywords = {
+            "overview": ["overview", "introduction", "about", "description", "summary"],
+            "installation": ["install", "setup", "requirements", "dependencies", "getting started"],
+            "usage": ["usage", "examples", "tutorial", "guide", "how to", "quickstart"],
+            "api": ["api", "reference", "functions", "methods", "classes", "endpoints"],
+            "contributing": ["contributing", "development", "contributing guidelines", "pull request"],
+        }
+
+        keywords = section_keywords.get(doc_type, [doc_type])
+        relevant_content = []
+
+        # Filter similar content by keywords
+        for item in context.similar_content:
+            content_lower = item["content"].lower()
+            metadata = item.get("metadata", {})
+            file_name = metadata.get("file_name", "").lower()
+
+            # Check if content is relevant to this section
+            if any(keyword in content_lower or keyword in file_name for keyword in keywords):
+                relevant_content.append(item)
+
+        # Sort by relevance score
+        relevant_content.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+        # Return top 3 most relevant pieces
+        return relevant_content[:3]
+
+    def _build_context_aware_prompt(
+        self, doc_type: str, code_analysis: Dict[str, Any], relevant_content: List[Dict[str, Any]], output_format: str
+    ) -> str:
+        """Build a prompt that incorporates existing documentation context."""
+
+        project_info = f"""
+Project Information:
+- Name: {code_analysis.get('name', 'Unknown')}
+- Language: {code_analysis.get('primary_language', 'Unknown')}
+- Description: {code_analysis.get('description', 'No description available')}
+- Dependencies: {', '.join(code_analysis.get('dependencies', [])[:5])}
+- File Count: {code_analysis.get('file_count', 0)}
+- Entry Points: {', '.join(code_analysis.get('entry_points', [])[:3])}
+"""
+
+        # Truncate modules to avoid context overflow
+        modules_summary = ""
+        if code_analysis.get("modules"):
+            modules = code_analysis["modules"][:10]  # Limit to first 10 modules
+            modules_summary = "\nKey Modules:\n"
+            for module in modules:
+                # Only include essential info about each module
+                functions_count = len(module.get("functions", []))
+                classes_count = len(module.get("classes", []))
+                modules_summary += (
+                    f"- {module.get('name', 'Unknown')}: {functions_count} functions, {classes_count} classes\n"
+                )
+
+        existing_context = ""
+        if relevant_content:
+            existing_context = "\nExisting Documentation Context:\n"
+            for i, content in enumerate(relevant_content, 1):
+                source = content["metadata"].get("file_name", "unknown file")
+                # Limit existing content to prevent overflow
+                content_preview = (
+                    content["content"][:300] + "..." if len(content["content"]) > 300 else content["content"]
+                )
+                existing_context += f"\n{i}. From {source}:\n{content_preview}\n"
+
+        prompt = f"""
+You are a technical documentation expert. Generate comprehensive {doc_type} documentation 
+for the following project, incorporating insights from existing documentation where relevant.
+
+{project_info}
+{modules_summary}
+{existing_context}
+
+Instructions:
+1. Create {doc_type} documentation in {output_format} format
+2. Use information from the code analysis as the primary source
+3. Incorporate relevant insights from existing documentation context when appropriate
+4. Ensure the documentation is comprehensive, accurate, and well-structured
+5. If existing documentation provides good examples or explanations, adapt them appropriately
+6. Maintain consistency with the existing documentation style where possible
+
+Generate the {doc_type} documentation:
+"""
+
+        return prompt
+
+    def _compile_documentation(
+        self, generated_docs: Dict[str, str], context: DocumentationContext, output_format: str
+    ) -> str:
+        """Compile all generated sections into final documentation."""
+
+        if output_format.lower() == "markdown":
+            return self._compile_markdown_documentation(generated_docs, context)
+        else:
+            # Default compilation
+            compiled = []
+            for doc_type, content in generated_docs.items():
+                compiled.append(f"# {doc_type.title()}\n\n{content}\n\n")
+            return "\n".join(compiled)
+
+    def _compile_markdown_documentation(self, generated_docs: Dict[str, str], context: DocumentationContext) -> str:
+        """Compile documentation in Markdown format."""
+
+        project_name = context.code_analysis.get("name", "Project")
+
+        sections_order = ["overview", "installation", "usage", "api", "contributing"]
+
+        compiled = [f"# {project_name}\n"]
+
+        # Add table of contents
+        toc = ["## Table of Contents\n"]
+        for section in sections_order:
+            if section in generated_docs:
+                toc.append(f"- [{section.title()}](#{section})")
+        compiled.append("\n".join(toc) + "\n")
+
+        # Add sections
+        for section in sections_order:
+            if section in generated_docs:
+                compiled.append(f"## {section.title()}\n")
+                compiled.append(generated_docs[section])
+                compiled.append("\n")
+
+        # Add metadata footer
+        if context.doc_summary["total_files"] > 0:
+            compiled.append("\n---\n")
+            compiled.append("*This documentation was generated using AI with insights from existing documentation.*\n")
+
+        return "\n".join(compiled)
+
+    def _summarize_code_analysis(self, code_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a summary of the code analysis for metadata."""
+        return {
+            "name": code_analysis.get("name"),
+            "language": code_analysis.get("primary_language"),
+            "files_analyzed": len(code_analysis.get("modules", [])),
+            "dependencies_count": len(code_analysis.get("dependencies", [])),
+            "has_tests": bool(code_analysis.get("test_files")),
+            "complexity_score": code_analysis.get("complexity_score", 0),
+        }

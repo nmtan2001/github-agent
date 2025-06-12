@@ -9,6 +9,7 @@ An intelligent system that analyzes code repositories and automatically generate
 - **🔍 Smart Code Analysis**: Multi-language repository parsing with complexity metrics
 - **📝 AI Documentation**: Generate README, API docs, tutorials using GPT-4o/mini models
 - **⚖️ Quality Assessment**: Compare generated vs existing docs with similarity metrics
+- **🌐 GitHub Integration**: Automatic repository cloning from GitHub URLs
 - **🚀 Modern UI**: Fast Gradio web interface (migrated from Streamlit for better performance)
 
 ## 🚀 Quick Start
@@ -25,6 +26,17 @@ python3 run.py
 ```
 
 **No API Key?** Test analysis only: `python3 scripts/test_analysis.py`
+
+## 📁 Repository Input Options
+
+The agent now supports multiple input formats:
+
+- **Local paths**: `./my-project`, `/absolute/path/to/repo`
+- **GitHub HTTPS**: `https://github.com/username/repository`
+- **GitHub SSH**: `git@github.com:username/repository.git`
+- **Short format**: `github.com/username/repository`
+
+GitHub repositories are automatically cloned to a temporary directory and cleaned up after processing.
 
 ## 🎯 How It Works
 
@@ -77,10 +89,19 @@ Quality Score: 0.82/1.0 (85% correlation with human evaluation)
 ```python
 from src.core.agent import DocumentationAgent, AgentConfig
 
+# Using local repository
 config = AgentConfig(
     repo_path="./my-project",
     model_name="gpt-4o-mini",
     doc_types=["readme", "api", "tutorial"]
+)
+
+# Or using GitHub URL (automatically cloned)
+config = AgentConfig(
+    repo_path="https://github.com/username/repository",
+    model_name="gpt-4o-mini",
+    doc_types=["readme", "api", "tutorial"],
+    auto_cleanup=True  # Clean up cloned repo after processing
 )
 
 agent = DocumentationAgent(config)

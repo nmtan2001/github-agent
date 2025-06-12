@@ -16,8 +16,11 @@ from pathlib import Path
 import logging
 
 from .analyzer import CodeAnalyzer, RepositoryMetadata, ModuleInfo
-from .generator import DocumentationGenerator, DocumentationConfig, GeneratedDocument
+from .generator import DocumentationGenerator, DocumentationConfig, GeneratedDocument, EnhancedDocumentationGenerator
 from .comparator import DocumentationComparator, ComparisonResult
+from .document_reader import DocumentReader, DocumentChunk
+from ..utils.llm import LLMManager
+from ..utils.templates import TemplateManager
 
 try:
     from git import Repo
@@ -42,12 +45,27 @@ class AgentConfig:
     save_intermediate: bool = True
     auto_cleanup: bool = True  # Whether to cleanup cloned repos automatically
 
+    # Enhanced documentation settings
+    use_enhanced_generator: bool = True
+    auto_discover_docs: bool = True
+    docs_paths: List[str] = None
+    exclude_patterns: List[str] = None
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
+    similarity_threshold: float = 0.7
+
     def __post_init__(self):
         if self.doc_types is None:
-            self.doc_types = ["readme", "api", "tutorial", "architecture"]
+            self.doc_types = ["overview", "installation", "usage", "api", "contributing"]
 
         if self.openai_api_key:
             os.environ["OPENAI_API_KEY"] = self.openai_api_key
+
+        if self.docs_paths is None:
+            self.docs_paths = []
+
+        if self.exclude_patterns is None:
+            self.exclude_patterns = ["*.git/*", "*.node_modules/*", "*.venv/*", "*/__pycache__/*"]
 
     @staticmethod
     def is_github_url(path: str) -> bool:
@@ -115,6 +133,20 @@ class DocumentationAgent:
 
         # Initialize components
         self.analyzer = CodeAnalyzer(actual_repo_path)
+
+        # Choose generator based on configuration
+        if config.use_enhanced_generator:
+            self.llm_manager = LLMManager()
+            self.template_manager = TemplateManager()
+            self.enhanced_generator = EnhancedDocumentationGenerator(
+                llm_manager=self.llm_manager,
+                template_manager=self.template_manager,
+                chunk_size=config.chunk_size,
+                chunk_overlap=config.chunk_overlap,
+            )
+        else:
+            self.enhanced_generator = None
+
         self.generator = DocumentationGenerator(
             DocumentationConfig(
                 model_name=config.model_name,
@@ -130,6 +162,8 @@ class DocumentationAgent:
         self.modules = []
         self.generated_docs = []
         self.comparison_results = {}
+        self.existing_docs_loaded = False
+        self.docs_summary = {}
 
     def _setup_logging(self) -> logging.Logger:
         """Setup logging for the agent"""
@@ -200,6 +234,254 @@ class DocumentationAgent:
         except Exception as e:
             self.logger.error(f"Failed to clone repository {github_url}: {str(e)}")
             raise RuntimeError(f"Failed to clone repository: {str(e)}")
+
+    def auto_discover_documentation(self, repo_path: Optional[str] = None) -> List[str]:
+        """
+        Automatically discover documentation files in the repository.
+
+        Args:
+            repo_path: Path to repository (uses config if not provided)
+
+        Returns:
+            List of discovered documentation paths
+        """
+        if not repo_path:
+            repo_path = self.config.repo_path if not self._cloned_repo_path else self._cloned_repo_path
+
+        doc_paths = []
+        repo_root = Path(repo_path)
+
+        # Common documentation directories
+        doc_dirs = ["docs", "doc", "documentation", "guide", "guides"]
+
+        # Common documentation files
+        doc_files = [
+            "README.md",
+            "README.rst",
+            "README.txt",
+            "INSTALL.md",
+            "INSTALLATION.md",
+            "USAGE.md",
+            "TUTORIAL.md",
+            "CONTRIBUTING.md",
+            "CHANGELOG.md",
+            "API.md",
+            "REFERENCE.md",
+        ]
+
+        # Check for documentation directories
+        for doc_dir in doc_dirs:
+            dir_path = repo_root / doc_dir
+            if dir_path.exists() and dir_path.is_dir():
+                doc_paths.append(str(dir_path))
+                self.logger.info(f"Found documentation directory: {dir_path}")
+
+        # Check for documentation files in root
+        for doc_file in doc_files:
+            file_path = repo_root / doc_file
+            if file_path.exists() and file_path.is_file():
+                doc_paths.append(str(file_path))
+                self.logger.info(f"Found documentation file: {file_path}")
+
+        # Check for documentation in common subdirectories
+        for subdir in ["examples", "tutorials", "samples"]:
+            subdir_path = repo_root / subdir
+            if subdir_path.exists() and subdir_path.is_dir():
+                # Look for markdown/rst files
+                for ext in ["*.md", "*.rst", "*.txt"]:
+                    found_files = list(subdir_path.rglob(ext))
+                    if found_files:
+                        doc_paths.extend([str(f) for f in found_files])
+                        self.logger.info(f"Found {len(found_files)} documentation files in {subdir}")
+
+        return doc_paths
+
+    def load_existing_documentation(
+        self, docs_paths: Optional[List[str]] = None, exclude_patterns: Optional[List[str]] = None
+    ) -> bool:
+        """
+        Load existing documentation from specified paths.
+
+        Args:
+            docs_paths: List of paths to documentation directories/files
+            exclude_patterns: Patterns to exclude from loading
+
+        Returns:
+            True if documentation was loaded successfully
+        """
+        if not self.enhanced_generator:
+            self.logger.warning("Enhanced generator not available. Cannot load existing documentation.")
+            return False
+
+        docs_paths = docs_paths or self.config.docs_paths
+        exclude_patterns = exclude_patterns or self.config.exclude_patterns
+
+        if not docs_paths and self.config.auto_discover_docs:
+            # Auto-discover documentation
+            docs_paths = self.auto_discover_documentation()
+            self.config.docs_paths.extend(docs_paths)
+
+        if not docs_paths:
+            self.logger.warning("No documentation paths provided")
+            return False
+
+        # Filter to existing paths
+        existing_paths = [path for path in docs_paths if os.path.exists(path)]
+        if not existing_paths:
+            self.logger.warning(f"None of the provided documentation paths exist: {docs_paths}")
+            return False
+
+        self.logger.info(f"Loading existing documentation from: {existing_paths}")
+
+        # Load documentation using enhanced generator
+        success = self.enhanced_generator.load_existing_documentation(existing_paths, exclude_patterns)
+
+        if success:
+            self.existing_docs_loaded = True
+            self.docs_summary = self.enhanced_generator.document_reader.get_documentation_summary(
+                self.enhanced_generator.existing_docs
+            )
+            self.logger.info(f"Successfully loaded documentation: {self.docs_summary}")
+
+        return success
+
+    def generate_enhanced_documentation(
+        self, doc_types: Optional[List[str]] = None, load_existing: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Generate documentation using the enhanced generator with existing documentation context.
+
+        Args:
+            doc_types: Types of documentation to generate
+            load_existing: Whether to load existing documentation first
+
+        Returns:
+            Enhanced generation results
+        """
+        if not self.enhanced_generator:
+            raise RuntimeError("Enhanced generator not available. Set use_enhanced_generator=True in config.")
+
+        doc_types = doc_types or self.config.doc_types
+
+        # Load existing documentation if requested and not already loaded
+        if load_existing and not self.existing_docs_loaded:
+            self.load_existing_documentation()
+
+        # Get the repository path (use cloned path if available)
+        repo_path = self._cloned_repo_path or self.config.repo_path
+
+        self.logger.info(f"Generating enhanced documentation for: {repo_path}")
+
+        # Generate documentation with context
+        result = self.enhanced_generator.generate_documentation_with_context(
+            repo_path=repo_path,
+            output_format="markdown",
+            doc_types=doc_types,
+            context_similarity_threshold=self.config.similarity_threshold,
+        )
+
+        self.logger.info("Enhanced documentation generation completed")
+        return result
+
+    def run_enhanced_pipeline(
+        self, existing_docs_path: Optional[str] = None, output_file: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Run the enhanced documentation generation pipeline.
+
+        Args:
+            existing_docs_path: Path to existing documentation (for discovery override)
+            output_file: File to save generated documentation
+
+        Returns:
+            Complete pipeline results
+        """
+        self.logger.info("Starting enhanced documentation pipeline")
+
+        import time
+
+        start_time = time.time()
+
+        try:
+            # Step 1: Analyze repository
+            self.analyze_repository()
+
+            # Step 2: Auto-discover and load existing documentation
+            if self.config.auto_discover_docs:
+                discovered_paths = self.auto_discover_documentation()
+                if discovered_paths:
+                    self.config.docs_paths.extend(discovered_paths)
+
+            # Add manual path if provided
+            if existing_docs_path and os.path.exists(existing_docs_path):
+                self.config.docs_paths.append(existing_docs_path)
+
+            # Load existing documentation
+            self.load_existing_documentation()
+
+            # Step 3: Generate enhanced documentation
+            enhanced_result = self.generate_enhanced_documentation()
+
+            # Step 4: Compare with existing documentation (if enabled)
+            if self.config.include_comparison:
+                try:
+                    # For enhanced pipeline, we need to create GeneratedDocument objects for comparison
+                    from .generator import GeneratedDocument
+                    import json
+
+                    # Create temporary GeneratedDocument objects
+                    self.generated_docs = []
+                    for doc_type in enhanced_result["metadata"].get("doc_types", []):
+                        # Extract section for this doc_type from the combined documentation
+                        self.generated_docs.append(
+                            GeneratedDocument(
+                                title=f"{doc_type.title()} Documentation",
+                                content=enhanced_result["documentation"],  # Using full content for now
+                                doc_type=doc_type,
+                                metadata=enhanced_result["metadata"],
+                                word_count=len(enhanced_result["documentation"].split()),
+                            )
+                        )
+
+                    # Run comparison
+                    self.compare_with_existing(existing_docs_path)
+
+                except Exception as e:
+                    self.logger.warning(f"Comparison failed in enhanced pipeline: {e}")
+
+            # Step 5: Save documentation if output file provided
+            if output_file:
+                output_path = Path(output_file)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write(enhanced_result["documentation"])
+                self.logger.info(f"Enhanced documentation saved to: {output_path}")
+
+            # Step 6: Compile final results
+            execution_time = time.time() - start_time
+
+            final_result = {
+                "documentation": enhanced_result["documentation"],
+                "metadata": enhanced_result["metadata"],
+                "context": enhanced_result.get("context", {}),
+                "existing_docs_summary": self.docs_summary,
+                "execution_time": execution_time,
+                "config": {
+                    "repo_path": self.config.repo_path,
+                    "use_enhanced_generator": self.config.use_enhanced_generator,
+                    "existing_docs_loaded": self.existing_docs_loaded,
+                    "auto_discovered_docs": self.config.auto_discover_docs,
+                    "docs_paths": self.config.docs_paths,
+                },
+            }
+
+            self.logger.info(f"Enhanced pipeline completed successfully in {execution_time:.2f} seconds")
+            return final_result
+
+        except Exception as e:
+            self.logger.error(f"Enhanced pipeline execution failed: {str(e)}")
+            raise
 
     def __del__(self):
         """Cleanup cloned repositories on object destruction"""
@@ -511,9 +793,7 @@ class DocumentationAgent:
 """
 
         for doc in report.generated_documents:
-            summary += (
-                f"- **{doc.doc_type.title()}**: {doc.word_count} words (confidence: {doc.confidence_score:.2f})\n"
-            )
+            summary += f"- **{doc.doc_type.title()}**: {doc.word_count} words\n"
 
         if report.comparison_results:
             summary += "\n## Comparison Results\n"
@@ -554,11 +834,12 @@ class DocumentationAgent:
 
         # Documentation quality recommendations
         if self.generated_docs:
-            avg_confidence = sum(doc.confidence_score for doc in self.generated_docs) / len(self.generated_docs)
+            # Check documentation word count as a quality indicator
+            avg_word_count = sum(doc.word_count for doc in self.generated_docs) / len(self.generated_docs)
 
-            if avg_confidence < 0.7:
+            if avg_word_count < 100:
                 recommendations.append(
-                    "Generated documentation confidence is low. Consider reviewing and manually improving the documentation."
+                    "Generated documentation appears brief. Consider reviewing and expanding the documentation for completeness."
                 )
 
         # Comparison-based recommendations
