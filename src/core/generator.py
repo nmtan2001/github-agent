@@ -37,7 +37,7 @@ class DocumentationConfig:
 
     model_name: str = "gpt-4o-mini"
     temperature: float = 0.3
-    max_tokens: int = 4000  # Increased for more comprehensive documentation
+    max_tokens: Optional[int] = None  # No token limit for comprehensive documentation
     include_examples: bool = True
     include_diagrams: bool = True
     format_type: str = "markdown"  # markdown, rst, html
@@ -185,16 +185,16 @@ class LLMDocumentationChain:
 
     def __init__(self, config: DocumentationConfig):
         self.config = config
-        # Updated to use latest OpenAI syntax with higher token limit for comprehensive docs
+        # Updated to use latest OpenAI syntax with no token limit for comprehensive docs
         self.llm = ChatOpenAI(
             model=config.model_name,
             temperature=config.temperature,
-            max_tokens=config.max_tokens,  # Now 4000 for detailed documentation
+            max_tokens=config.max_tokens,  # No limit for detailed documentation
             api_key=os.getenv("OPENAI_API_KEY"),  # Explicit API key handling
         )
 
         # Initialize embeddings for context retrieval with explicit API key
-        self.embeddings = OpenAIEmbeddings(api_key=os.getenv("OPENAI_API_KEY"))
+        self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small", api_key=os.getenv("OPENAI_API_KEY"))
         self.knowledge_base = None
 
         # Create documentation generation graph
@@ -1432,7 +1432,7 @@ class EnhancedDocumentationGenerator:
 
         config = DocumentationConfig(
             model_name=self.llm_manager.config.model,
-            max_tokens=4000,  # Use higher token limit for comprehensive docs
+            max_tokens=None,  # No token limit for comprehensive docs
             temperature=0.3,
         )
         llm_chain = LLMDocumentationChain(config)

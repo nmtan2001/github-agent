@@ -22,7 +22,7 @@ class SummarizationConfig:
 
     model_name: str = "gpt-4o-mini"  # Use cheaper model for summarization
     temperature: float = 0.1  # Low temperature for consistent summaries
-    max_tokens: int = 500  # Limit summary length
+    max_tokens: Optional[int] = None  # No limit for summary length
     target_length: int = 200  # Target character length for summaries
 
 

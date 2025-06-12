@@ -21,7 +21,7 @@ class LLMConfig:
     model: str
     api_key: Optional[str] = None
     base_url: Optional[str] = None
-    max_tokens: int = 4000
+    max_tokens: Optional[int] = None
     temperature: float = 0.3
 
 

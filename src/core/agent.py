@@ -39,7 +39,7 @@ class AgentConfig:
     openai_api_key: Optional[str] = None
     model_name: str = "gpt-4"
     temperature: float = 0.3
-    max_tokens: int = 2000
+    max_tokens: Optional[int] = None
     doc_types: List[str] = None
     include_comparison: bool = True
     save_intermediate: bool = True
