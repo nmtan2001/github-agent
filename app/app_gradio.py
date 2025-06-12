@@ -478,6 +478,9 @@ We'll demonstrate the agent using the Flask web framework repository:
 
         # Step 4: Compare Documentation
         comparison_status = "🔄 Comparing with existing documentation..."
+        comparison_content = ""
+        comparison_visible = gr.update(visible=False)
+
         try:
             comparison_result = self.compare_documentation()
             comparison_content, comparison_visible = comparison_result
@@ -487,8 +490,8 @@ We'll demonstrate the agent using the Flask web framework repository:
                 comparison_status = "✅ Comparison completed successfully!"
         except Exception as e:
             comparison_status = f"❌ Comparison failed: {e}"
-            comparison_content = ""
-            comparison_visible = gr.update(visible=False)
+            comparison_content = f"Error during comparison: {str(e)}"
+            comparison_visible = gr.update(visible=True)
 
         return (
             init_status,
@@ -504,6 +507,265 @@ We'll demonstrate the agent using the Flask web framework repository:
             comparison_content,
             comparison_visible,
         )
+
+    def run_progressive_workflow(self, api_key, model_name, repo_path, readme, api_docs, tutorial, architecture):
+        """Progressive workflow that yields results after each step"""
+
+        # Step 1: Initialize Agent
+        yield (
+            "🔄 Initializing agent...",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            gr.update(visible=False),
+            "",
+            gr.update(visible=False),
+            "",
+            gr.update(visible=False),
+        )
+
+        try:
+            init_result = self.initialize_agent(
+                api_key, model_name, repo_path, readme, api_docs, tutorial, architecture
+            )
+            init_status = init_result[0]
+
+            if "❌" in init_status:
+                yield (
+                    init_status,
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    gr.update(visible=False),
+                    "",
+                    gr.update(visible=False),
+                    "",
+                    gr.update(visible=False),
+                )
+                return
+        except Exception as e:
+            yield (
+                f"❌ Initialization failed: {e}",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                gr.update(visible=False),
+                "",
+                gr.update(visible=False),
+                "",
+                gr.update(visible=False),
+            )
+            return
+
+        # Step 2: Analyze Repository
+        yield (
+            init_status,
+            "🔄 Analyzing repository structure...",
+            "",
+            "",
+            "",
+            "",
+            "",
+            gr.update(visible=False),
+            "",
+            gr.update(visible=False),
+            "",
+            gr.update(visible=False),
+        )
+
+        try:
+            analysis_result = self.analyze_repository()
+            analysis_status, metrics, details, dependencies, results_visible = analysis_result
+
+            if "❌" in analysis_status:
+                yield (
+                    init_status,
+                    analysis_status,
+                    "",
+                    "",
+                    metrics,
+                    details,
+                    dependencies,
+                    results_visible,
+                    "",
+                    gr.update(visible=False),
+                    "",
+                    gr.update(visible=False),
+                )
+                return
+
+            # Show analysis results immediately
+            yield (
+                init_status,
+                analysis_status,
+                "",
+                "",
+                metrics,
+                details,
+                dependencies,
+                results_visible,
+                "",
+                gr.update(visible=False),
+                "",
+                gr.update(visible=False),
+            )
+
+        except Exception as e:
+            analysis_status = f"❌ Analysis failed: {e}"
+            yield (
+                init_status,
+                analysis_status,
+                "",
+                "",
+                "",
+                "",
+                "",
+                gr.update(visible=False),
+                "",
+                gr.update(visible=False),
+                "",
+                gr.update(visible=False),
+            )
+            return
+
+        # Step 3: Generate Documentation
+        yield (
+            init_status,
+            analysis_status,
+            "🔄 Generating documentation...",
+            "",
+            metrics,
+            details,
+            dependencies,
+            gr.update(visible=True),
+            "",
+            gr.update(visible=False),
+            "",
+            gr.update(visible=False),
+        )
+
+        try:
+            generation_result = self.generate_documentation()
+            generation_status, docs_preview, downloads = generation_result
+
+            if "❌" in generation_status:
+                yield (
+                    init_status,
+                    analysis_status,
+                    generation_status,
+                    "",
+                    metrics,
+                    details,
+                    dependencies,
+                    gr.update(visible=True),
+                    docs_preview,
+                    downloads,
+                    "",
+                    gr.update(visible=False),
+                )
+                return
+
+            # Show generation results immediately
+            yield (
+                init_status,
+                analysis_status,
+                generation_status,
+                "",
+                metrics,
+                details,
+                dependencies,
+                gr.update(visible=True),
+                docs_preview,
+                downloads,
+                "",
+                gr.update(visible=False),
+            )
+
+        except Exception as e:
+            generation_status = f"❌ Generation failed: {e}"
+            yield (
+                init_status,
+                analysis_status,
+                generation_status,
+                "",
+                metrics,
+                details,
+                dependencies,
+                gr.update(visible=True),
+                "",
+                gr.update(visible=False),
+                "",
+                gr.update(visible=False),
+            )
+            return
+
+        # Step 4: Compare Documentation
+        yield (
+            init_status,
+            analysis_status,
+            generation_status,
+            "🔄 Comparing with existing documentation...",
+            metrics,
+            details,
+            dependencies,
+            gr.update(visible=True),
+            docs_preview,
+            downloads,
+            "",
+            gr.update(visible=False),
+        )
+
+        try:
+            comparison_result = self.compare_documentation()
+            comparison_content, comparison_visible = comparison_result
+
+            if "❌" in comparison_content or "⚠️" in comparison_content:
+                comparison_status = comparison_content.split("\n")[0]  # First line as status
+            else:
+                comparison_status = "✅ Comparison completed successfully!"
+
+            # Show final results
+            yield (
+                init_status,
+                analysis_status,
+                generation_status,
+                comparison_status,
+                metrics,
+                details,
+                dependencies,
+                gr.update(visible=True),
+                docs_preview,
+                downloads,
+                comparison_content,
+                comparison_visible,
+            )
+
+        except Exception as e:
+            comparison_status = f"❌ Comparison failed: {e}"
+            comparison_content = f"Error during comparison: {str(e)}"
+            yield (
+                init_status,
+                analysis_status,
+                generation_status,
+                comparison_status,
+                metrics,
+                details,
+                dependencies,
+                gr.update(visible=True),
+                docs_preview,
+                downloads,
+                comparison_content,
+                gr.update(visible=True),
+            )
 
 
 def create_interface():
@@ -689,8 +951,14 @@ def create_interface():
         # Event handlers
         walkthrough_btn.click(agent_interface.run_example_walkthrough, outputs=[walkthrough_display])
 
+        # Progressive workflow that updates UI after each step
+        def progressive_workflow(*inputs):
+            """Generator function for progressive updates"""
+            for result in agent_interface.run_progressive_workflow(*inputs):
+                yield result
+
         init_btn.click(
-            agent_interface.full_workflow,
+            progressive_workflow,
             inputs=[
                 api_key,
                 model_name,
@@ -714,6 +982,7 @@ def create_interface():
                 comparison_results_display,
                 comparison_section,
             ],
+            show_progress="hidden",  # This hides the default progress bars
         )
 
     return app

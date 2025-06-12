@@ -368,7 +368,12 @@ class DocumentationAgent:
         if docs_path:
             base_path = Path(docs_path)
         else:
-            base_path = Path(self.config.repo_path)
+            if hasattr(self, "analyzer") and hasattr(self.analyzer, "repo_path"):
+                base_path = Path(self.analyzer.repo_path)
+                self.logger.info(f"Using analyzer repo path for existing docs: {base_path}")
+            else:
+                base_path = Path(self.config.repo_path)
+                self.logger.info(f"Using config repo path for existing docs: {base_path}")
 
         existing_docs = []
 
@@ -379,6 +384,21 @@ class DocumentationAgent:
             "tutorial": ["TUTORIAL.md", "tutorial.md", "docs/tutorial.md", "GETTING_STARTED.md"],
             "architecture": ["ARCHITECTURE.md", "architecture.md", "docs/architecture.md"],
         }
+
+        self.logger.info(f"Searching for existing documentation in: {base_path}")
+
+        # Debug: List what files actually exist in the repository
+        if base_path.exists():
+            try:
+                files = list(base_path.glob("*"))
+                self.logger.info(f"Files in repository root: {[f.name for f in files[:10]]}")
+                # Check specifically for README files
+                readme_files = list(base_path.glob("README*"))
+                self.logger.info(f"README files found: {[f.name for f in readme_files]}")
+            except Exception as e:
+                self.logger.warning(f"Could not list repository files: {e}")
+        else:
+            self.logger.warning(f"Repository path does not exist: {base_path}")
 
         for doc_type, patterns in doc_patterns.items():
             for pattern in patterns:
@@ -392,6 +412,9 @@ class DocumentationAgent:
                         break  # Only take the first match per type
                     except (UnicodeDecodeError, PermissionError) as e:
                         self.logger.warning(f"Could not read {file_path}: {str(e)}")
+
+        if not existing_docs:
+            self.logger.warning(f"No existing documentation found in {base_path}")
 
         return existing_docs
 
