@@ -257,6 +257,8 @@ class LLMDocumentationChain:
                     section = self._generate_tutorial_section(state)
                 elif doc_type == "architecture":
                     section = self._generate_architecture_section(state)
+                elif doc_type == "comprehensive":
+                    section = self._generate_comprehensive_section(state)
                 else:
                     section = self._generate_generic_section(state)
 
@@ -969,6 +971,176 @@ class LLMDocumentationChain:
         }
         return templates.get(doc_type, "{content}")
 
+    def _generate_comprehensive_section(self, state) -> str:
+        """Generate comprehensive documentation that combines all aspects"""
+
+        # Extract key information
+        repo_name = state["code_analysis"].name
+        description = state["code_analysis"].description
+        language = state["code_analysis"].language
+        dependencies = state["code_analysis"].dependencies
+        modules = state["modules"]
+
+        # Filter and organize modules
+        core_modules = [
+            m for m in modules if not any(skip in m.path.lower() for skip in ["test", "example", "__pycache__"])
+        ]
+
+        # Build comprehensive context
+        module_details = []
+        key_classes = []
+        key_functions = []
+
+        for module in core_modules[:15]:  # Include more modules for comprehensive doc
+            module_detail = f"\n## Module: {module.name}\n"
+            module_detail += f"**Path**: `{module.path}`\n"
+
+            if module.docstring:
+                module_detail += f"**Description**: {module.docstring[:300]}...\n"
+
+            if module.classes:
+                module_detail += f"**Classes** ({len(module.classes)}):\n"
+                for cls in module.classes[:5]:
+                    key_classes.append(f"{module.name}.{cls.name}")
+                    module_detail += (
+                        f"- `{cls.name}`: {cls.docstring[:150] if cls.docstring else 'No description'}...\n"
+                    )
+                    if cls.methods:
+                        module_detail += f"  - Methods: {', '.join([m.name for m in cls.methods[:8]])}\n"
+
+            if module.functions:
+                module_detail += f"**Functions** ({len(module.functions)}):\n"
+                for func in module.functions[:8]:
+                    key_functions.append(f"{module.name}.{func.name}")
+                    params = ", ".join(func.parameters) if func.parameters else "no parameters"
+                    return_type = f" -> {func.return_type}" if func.return_type else ""
+                    module_detail += f"- `{func.name}({params}){return_type}`: {func.docstring[:150] if func.docstring else 'No description'}...\n"
+
+            module_details.append(module_detail)
+
+        prompt = PromptTemplate(
+            input_variables=[
+                "repo_name",
+                "description",
+                "language",
+                "dependencies",
+                "module_details",
+                "key_classes",
+                "key_functions",
+            ],
+            template="""
+            Generate a comprehensive, unified documentation for the {repo_name} project that combines all aspects into a single, cohesive document.
+            
+            **Project Overview:**
+            - Name: {repo_name}
+            - Description: {description}
+            - Language: {language}
+            - Key Dependencies: {dependencies}
+            
+            **Module Analysis:**
+            {module_details}
+            
+            **Key Components:**
+            - Classes: {key_classes}
+            - Functions: {key_functions}
+            
+            Create a SINGLE comprehensive documentation that includes ALL of the following sections in this exact order:
+            
+            # {repo_name}
+            
+            ## Table of Contents
+            [Generate a complete table of contents for all sections below]
+            
+            ## Overview
+            [Provide a comprehensive overview of the project, its purpose, and key features based on the code analysis]
+            
+            ## Installation
+            [Detailed installation instructions including prerequisites, dependencies, and setup steps]
+            
+            ## Quick Start
+            [A concise getting-started guide with the most basic usage example]
+            
+            ## Features
+            [List and explain all major features discovered in the codebase]
+            
+            ## API Reference
+            [Comprehensive API documentation covering all major modules, classes, and functions with:
+            - Module descriptions
+            - Class documentation with methods
+            - Function signatures and descriptions
+            - Parameter types and return values
+            - Usage examples for each major component]
+            
+            ## Usage Examples
+            [Multiple practical examples showing different use cases and scenarios]
+            
+            ## Architecture
+            [Technical architecture overview including:
+            - System design and structure
+            - Component relationships
+            - Data flow
+            - Design patterns used
+            - Technology choices and rationale]
+            
+            ## Configuration
+            [Any configuration options, environment variables, or settings]
+            
+            ## Advanced Usage
+            [Advanced features, customization options, and power-user functionality]
+            
+            ## Troubleshooting
+            [Common issues, solutions, and debugging tips]
+            
+            ## Performance Considerations
+            [Performance tips, optimization strategies, and scalability notes]
+            
+            ## Security
+            [Security considerations, best practices, and any security-related features]
+            
+            ## Contributing
+            [Guidelines for contributing to the project]
+            
+            ## License
+            [License information]
+            
+            ## Appendix
+            [Additional technical details, glossary, or reference materials]
+            
+            **Requirements:**
+            - Make this a SINGLE, unified document - not separate files
+            - Use actual module names, classes, and functions from the code analysis
+            - Include realistic, runnable code examples based on the actual codebase
+            - Ensure all sections flow together cohesively
+            - Use proper markdown formatting with appropriate headers and code blocks
+            - Make it comprehensive enough to serve as the primary documentation
+            - Include both high-level concepts and detailed technical information
+            - Ensure examples use the actual API discovered in the code
+            
+            Generate the complete, production-ready comprehensive documentation:
+            """,
+        )
+
+        # Use latest LangChain syntax with direct invocation
+        formatted_prompt = prompt.format(
+            repo_name=repo_name,
+            description=description[:500] + "..." if len(description) > 500 else description,
+            language=language,
+            dependencies=", ".join(dependencies[:15]),  # Top 15 dependencies
+            module_details="\n".join(module_details),
+            key_classes=", ".join(key_classes[:30]),
+            key_functions=", ".join(key_functions[:40]),
+        )
+
+        messages = [
+            SystemMessage(
+                content="You are a technical documentation expert. Generate comprehensive, unified documentation that combines all aspects into a single cohesive document."
+            ),
+            HumanMessage(content=formatted_prompt),
+        ]
+
+        result = self.llm.invoke(messages)
+        return result.content if hasattr(result, "content") else str(result)
+
 
 class DocumentationGenerator:
     """Main documentation generator using LLM chains"""
@@ -1523,6 +1695,8 @@ class EnhancedDocumentationGenerator:
                 return llm_chain._generate_tutorial_section(state)
             elif doc_type == "architecture":
                 return llm_chain._generate_architecture_section(state)
+            elif doc_type == "comprehensive":
+                return llm_chain._generate_comprehensive_section(state)
             else:
                 return llm_chain._generate_generic_section(state)
         except Exception as e:

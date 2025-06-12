@@ -44,13 +44,13 @@ class DocumentationAgentInterface:
     def run_example_walkthrough(self):
         """Run an example walkthrough with a demonstration repository"""
         walkthrough_md = """
-# 🚀 Example Walkthrough: Flask Repository Analysis
+# 🚀 Example Walkthrough: Comprehensive Documentation Generation
 
 ## 🎯 How It Works
-The agent uses an intelligent pipeline that reads and incorporates existing documentation:
+The agent creates a single, comprehensive documentation file that combines all aspects of your project:
 
 ### Flow:
-`Code Analysis + README Analysis → Context-Aware LLM Generation → Compare/Improve`
+`Code Analysis + README Analysis → Comprehensive Document Generation → README Comparison`
 
 ## 📋 Try These Examples:
 - **Flask Framework**: `https://github.com/pallets/flask`
@@ -59,38 +59,53 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
 
 ## 🔄 What the Agent Does:
 
-### 1. 🔍 **Smart Discovery**
-- Automatically finds README.md, docs/ folders, wiki files
-- Supports multiple formats (.md, .rst, .txt, .adoc)
-- Excludes irrelevant files (.git, node_modules, etc.)
+### 1. 🔍 **Smart Analysis**
+- Analyzes your entire codebase structure
+- Identifies all modules, classes, and functions
+- Extracts existing documentation and docstrings
+- Finds and reads your original README
 
-### 2. 📚 **Context Integration**
-- Reads and chunks existing documentation
-- Creates semantic embeddings for similarity search
-- Identifies documentation patterns and styles
+### 2. 📚 **Comprehensive Generation**
+- Creates a single, unified documentation file
+- Includes all essential sections in one place:
+  - Overview and features
+  - Installation instructions
+  - Complete API reference
+  - Usage examples
+  - Architecture details
+  - Configuration guides
+  - Troubleshooting
+  - Contributing guidelines
 
-### 3. 🧠 **Context-Aware Generation**
-- Uses context-aware LLM prompts
-- Incorporates existing documentation patterns
-- Maintains style consistency
-- Fills gaps while respecting existing structure
+### 3. 🧠 **Context-Aware Enhancement**
+- Uses your original README as context
+- Maintains your documentation style
+- Fills gaps in existing documentation
+- Expands on brief descriptions
 
-### 4. ⚖️ **Intelligent Comparison**
-- Shows how much existing documentation was found
-- Explains context integration used in generation
-- Provides comprehensive analysis and recommendations
+### 4. ⚖️ **README Comparison**
+- Compares the new comprehensive doc with your original README
+- Shows coverage improvements
+- Identifies new sections added
+- Provides similarity metrics
 
-## ✨ Expected Outputs:
-- **Context-aware documentation** that builds on existing content
-- **Style-consistent** with your current documentation
-- **Gap-filling** that complements rather than duplicates
-- **Smart discovery** summary of existing documentation found
+## ✨ Expected Output:
+- **One comprehensive document** (10,000+ words typically)
+- **Complete project documentation** in a single file
+- **README comparison report** showing improvements
+- **Professional markdown formatting** ready for use
 
-*Works great with any repository that has existing documentation!*
+## 📈 Benefits:
+- **All-in-one**: No need to maintain multiple doc files
+- **Comprehensive**: Covers every aspect of your project
+- **Consistent**: Unified style throughout
+- **README-aware**: Builds upon your existing documentation
+
+*Perfect for creating complete project documentation from any codebase!*
 """
         return walkthrough_md
 
-    def initialize_agent(self, api_key, model_name, repo_path, readme, api_docs, tutorial, architecture):
+    def initialize_agent(self, api_key, model_name, repo_path):
         """Initialize the documentation agent"""
         if not api_key:
             return (
@@ -118,16 +133,8 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
                 gr.update(visible=False),
             )
 
-        # Build doc_types list based on checkboxes
-        doc_types = []
-        if readme:
-            doc_types.append("readme")
-        if api_docs:
-            doc_types.append("api")
-        if tutorial:
-            doc_types.append("tutorial")
-        if architecture:
-            doc_types.append("architecture")
+        # Use a single comprehensive document type
+        doc_types = ["comprehensive"]  # Single comprehensive document
 
         try:
             config = AgentConfig(
@@ -214,42 +221,45 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
 - **Complexity:** {self.agent.repository_metadata.complexity_score:.2f}
 """
 
-                preview_content = f"""# 📚 Documentation Generated with README Enhancement
+                preview_content = f"""# 📚 Comprehensive Documentation Generated
 {repo_info}
 ## 📊 Generation Summary
 - **Repository:** {self.agent.repository_metadata.name if hasattr(self.agent, 'repository_metadata') and self.agent.repository_metadata else 'N/A'}
-- **Total Documents:** {metadata.get('total_documents', 0)}
+- **Document Type:** Comprehensive (All-in-One)
 - **Enhanced with Embeddings:** {metadata.get('enhanced_with_embeddings', False)}
-- **Existing Docs Used:** {metadata.get('existing_docs_loaded', False)}
-- **Generation Method:** {metadata.get('generation_method', 'standard')}
+- **Original README Used:** {metadata.get('existing_docs_loaded', False)}
+- **Generation Method:** {metadata.get('generation_method', 'enhanced')}
 
-## 📚 Generated Documents
+## 📄 Generated Document Preview
 
 """
 
-                # Add each document to the preview
-                for doc in generated_docs:
-                    preview_content += f"### {doc.doc_type.title()} Documentation ({doc.word_count} words)\n"
-                    preview_content += f"{doc.content[:1000]}{'...' if len(doc.content) > 1000 else ''}\n\n---\n\n"
+                # Add the comprehensive document to the preview
+                if generated_docs:
+                    doc = generated_docs[0]  # Should be just one comprehensive document
+                    preview_content += f"### {doc.title} ({doc.word_count:,} words)\n"
+                    preview_content += f"{doc.content[:2000]}{'...' if len(doc.content) > 2000 else ''}\n\n"
 
                 preview_content += """
-## ✅ Features Used:
-- ✅ **Code Analysis:** Repository structure and dependencies analyzed
-- ✅ **README Embeddings:** Existing documentation vectorized and used for context
-- ✅ **Context Integration:** Existing documentation patterns incorporated
-- ✅ **Multi-Document Generation:** Separate documents for each type
-- ✅ **Enhanced Prompts:** LLM prompts enriched with README content
+## ✅ Document Includes:
+- ✅ **Complete Overview:** Project description and features
+- ✅ **Installation Guide:** Prerequisites and setup instructions  
+- ✅ **API Reference:** All modules, classes, and functions documented
+- ✅ **Usage Examples:** Practical code examples
+- ✅ **Architecture:** Technical design and structure
+- ✅ **Advanced Topics:** Configuration, troubleshooting, performance
+- ✅ **Contributing Guidelines:** How to contribute to the project
 """
 
-                # Create temporary files for download
+                # Create temporary file for download
                 file_outputs = []
 
-                # Save each document as a separate file
-                for doc in generated_docs:
-                    doc_path = os.path.join(self.temp_dir, f"{doc.doc_type}_documentation.md")
-                    with open(doc_path, "w", encoding="utf-8") as f:
-                        f.write(f"# {doc.title}\n\n{doc.content}")
-                    file_outputs.append(doc_path)
+                # Save the comprehensive document
+                doc_path = os.path.join(self.temp_dir, "readme_summarized.md")
+                with open(doc_path, "w", encoding="utf-8") as f:
+                    if generated_docs:
+                        f.write(f"# {generated_docs[0].title}\n\n{generated_docs[0].content}")
+                file_outputs.append(doc_path)
 
                 # Save metadata
                 metadata_path = os.path.join(self.temp_dir, "generation_metadata.json")
@@ -419,7 +429,7 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
             return error_details, "", "", "", gr.update(visible=False)
 
     def compare_documentation(self):
-        """Compare generated documentation with existing documentation"""
+        """Compare generated documentation with original README"""
         if not self.agent:
             return "⚠️ Warning: Please initialize the agent first", gr.update(visible=False)
 
@@ -431,12 +441,13 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
             if hasattr(self.agent, "comparison_results") and self.agent.comparison_results:
                 comparison_results = self.agent.comparison_results
 
-                comparison_content = "# 📊 Documentation Comparison Results\n\n"
+                comparison_content = "# 📊 README Comparison Results\n\n"
 
-                # Generate metrics summary
-                for doc_type, result in comparison_results.items():
+                # Since we now have a single comprehensive document, show its comparison
+                if "comprehensive" in comparison_results:
+                    result = comparison_results["comprehensive"]
                     metrics = result.metrics
-                    comparison_content += f"""## {doc_type.title()} Documentation
+                    comparison_content += f"""## Comprehensive Documentation vs Original README
 
 ### 📈 Similarity Metrics
 - **Semantic Similarity:** {metrics.semantic_similarity:.1%}
@@ -450,21 +461,28 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
 ### 🎯 Analysis
 {result.detailed_analysis.get('summary', 'No detailed analysis available')}
 
-### 💡 Recommendations
+### 💡 Recommendations for README Enhancement
 """
-                    for rec in result.recommendations[:3]:  # Show top 3 recommendations
+                    for rec in result.recommendations[:5]:  # Show top 5 recommendations
                         comparison_content += f"- {rec}\n"
 
                     if result.missing_sections:
-                        comparison_content += f"\n**Missing Sections:** {', '.join(result.missing_sections)}\n"
+                        comparison_content += (
+                            f"\n**Sections Added Beyond Original README:** {', '.join(result.missing_sections)}\n"
+                        )
 
                     if result.additional_sections:
-                        comparison_content += f"**Additional Sections:** {', '.join(result.additional_sections)}\n"
+                        comparison_content += (
+                            f"**New Comprehensive Sections:** {', '.join(result.additional_sections)}\n"
+                        )
 
                     comparison_content += "\n---\n\n"
+                else:
+                    # Fallback if no comprehensive comparison
+                    comparison_content += "No comparison data available for comprehensive documentation.\n"
 
                 # Save comparison results to file
-                comparison_file = os.path.join(self.temp_dir, "comparison_results.json")
+                comparison_file = os.path.join(self.temp_dir, "readme_comparison_results.json")
                 with open(comparison_file, "w", encoding="utf-8") as f:
                     import json
                     from dataclasses import asdict
@@ -487,23 +505,37 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
 
                 if existing_docs_count == 0:
                     return (
-                        "ℹ️ No existing documentation found - comparison not available",
+                        "ℹ️ No existing README found - comparison not available",
                         gr.update(visible=False),
                     )
 
-                comparison_content = f"""# 📊 Context Integration Summary
+                comparison_content = f"""# 📊 README Context Integration Summary
 
-## 📚 Existing Documentation Analysis
-- **Existing Documentation Found:** {existing_docs_count} chunks
+## 📚 Original README Analysis
+- **README Content Found:** ✅ Yes ({existing_docs_count} chunks analyzed)
 - **Context Used in Generation:** ✅ Yes
 
-### 🎯 Integration Features Used
-- **Smart Discovery:** Automatically found and analyzed existing documentation
-- **Context-Aware Generation:** LLM prompts enriched with existing content patterns
-- **Style Preservation:** Maintained consistency with existing documentation style
-- **Gap Filling:** Generated content fills gaps while respecting existing structure
+### 🎯 How the Original README Was Used
+- **Smart Discovery:** Automatically found and analyzed the original README
+- **Context-Aware Generation:** The comprehensive documentation was enriched with patterns from the original README
+- **Style Preservation:** Maintained consistency with the original README's writing style
+- **Content Enhancement:** The new documentation expands on the original README with:
+  - Detailed API reference
+  - Architecture documentation
+  - Advanced usage examples
+  - Troubleshooting guides
+  - Performance considerations
 
-*Note: For detailed comparison metrics, ensure the agent's comparison feature is enabled.*
+### 📈 Documentation Improvement
+The generated comprehensive documentation significantly expands upon the original README by adding:
+- Complete API documentation for all modules and functions
+- Technical architecture details
+- Multiple usage examples
+- Configuration guides
+- Security considerations
+- Contributing guidelines
+
+*Note: For detailed similarity metrics, the comparison feature analyzes how well the new documentation covers and expands the original README content.*
 """
 
                 return (
@@ -517,11 +549,11 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
             error_details = f"❌ Comparison failed: {e}\n\nDetails:\n{traceback.format_exc()}"
             return error_details, gr.update(visible=False)
 
-    def full_workflow(self, api_key, model_name, repo_path, readme, api_docs, tutorial, architecture):
+    def full_workflow(self, api_key, model_name, repo_path):
         """Complete workflow: Initialize -> Analyze -> Generate -> Compare"""
         # Step 1: Initialize Agent
         init_status, _, _, _, analysis_visible, generation_visible = self.initialize_agent(
-            api_key, model_name, repo_path, readme, api_docs, tutorial, architecture
+            api_key, model_name, repo_path
         )
 
         if "❌" in init_status:
@@ -644,7 +676,7 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
             comparison_visible,
         )
 
-    def run_progressive_workflow(self, api_key, model_name, repo_path, readme, api_docs, tutorial, architecture):
+    def run_progressive_workflow(self, api_key, model_name, repo_path):
         """Progressive workflow that yields results after each step"""
 
         # Step 1: Initialize Agent
@@ -658,9 +690,7 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
         )
 
         try:
-            init_result = self.initialize_agent(
-                api_key, model_name, repo_path, readme, api_docs, tutorial, architecture
-            )
+            init_result = self.initialize_agent(api_key, model_name, repo_path)
             init_status = init_result[0]
 
             if "❌" in init_status:
@@ -737,7 +767,7 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
             generation_status,
             docs_preview,
             downloads,
-            "🔄 Comparing with existing documentation...",
+            "🔄 Comparing with original README...",
             "",
         )
 
@@ -865,13 +895,11 @@ def create_interface():
                             info="Choose the LLM model",
                         )
 
-                with gr.Row():
-                    gr.Markdown("**📚 Documentation Types to Generate:**")
-                with gr.Row():
-                    readme_check = gr.Checkbox(label="README", value=True)
-                    api_docs_check = gr.Checkbox(label="API Documentation", value=True)
-                    tutorial_check = gr.Checkbox(label="Tutorial", value=True)
-                    architecture_check = gr.Checkbox(label="Architecture", value=True)
+                # Remove document type checkboxes - we'll generate one comprehensive document
+                gr.Markdown("**📚 Documentation Generation:**")
+                gr.Markdown(
+                    "The agent will generate a comprehensive documentation that includes all aspects: overview, API reference, tutorials, and architecture details."
+                )
 
                 init_btn = gr.Button("🚀 Start Complete Workflow", variant="primary", size="lg")
                 init_status = gr.Markdown("")
@@ -887,9 +915,7 @@ def create_interface():
         # Step 3: Comparison
         with gr.Row():
             with gr.Column():
-                gr.HTML(
-                    '<div class="section-box"><h2><span class="step-number">3</span>Documentation Comparison</h2></div>'
-                )
+                gr.HTML('<div class="section-box"><h2><span class="step-number">3</span>README Comparison</h2></div>')
                 comparison_status = gr.Markdown("")
 
         # Results and Download Section
@@ -901,8 +927,8 @@ def create_interface():
         # Comparison Results Section
         with gr.Row(visible=True) as comparison_section:
             with gr.Column():
-                gr.HTML('<div class="section-box"><h2>⚖️ Comparison Results & Similarity Analysis</h2></div>')
-                comparison_results_display = gr.Markdown("", label="Comparison Analysis")
+                gr.HTML('<div class="section-box"><h2>⚖️ Comparison with Original README</h2></div>')
+                comparison_results_display = gr.Markdown("", label="README Comparison Analysis")
 
         # Help Section
         with gr.Row():
@@ -915,15 +941,27 @@ def create_interface():
                     **Step 1:** Configure your settings
                     - Enter your OpenAI API key
                     - Set repository path or GitHub URL
-                    - Choose model and documentation types
+                    - Choose your preferred model
                     
-                    **Step 2:** Generate documentation
-                    - Click "Start Complete Workflow" to create docs
+                    **Step 2:** Generate comprehensive documentation
+                    - Click "Start Complete Workflow" to create a unified document
                     - Preview and download your documentation
                     
-                    **Step 3:** Review comparison results
-                    - View similarity scores and quality metrics
+                    **Step 3:** Review README comparison
+                    - View how the new documentation compares to the original README
+                    - See similarity scores and coverage metrics
                     - Get recommendations for improvement
+                    
+                    ## 📄 What Gets Generated
+                    A single comprehensive document that includes:
+                    - Project overview and features
+                    - Installation and setup instructions
+                    - Complete API reference
+                    - Usage examples and tutorials
+                    - Architecture documentation
+                    - Configuration guides
+                    - Troubleshooting and FAQ
+                    - Contributing guidelines
                     
                     ## 📁 Repository Input Options
                     - **Local path**: `./my-project` or `/path/to/repo`
@@ -933,9 +971,16 @@ def create_interface():
                     
                     ## 💡 Model Recommendations
                     - **GPT-4o**: Best quality, excellent for complex analysis
-                    - **GPT-4o-mini**: Cost-effective, good for simple docs
+                    - **GPT-4o-mini**: Cost-effective, good for most projects
                     - **GPT-4.1-mini**: Improved capabilities
-                    - **o4-mini**: Lightweight for basic documentation
+                    - **o4-mini**: Lightweight for smaller projects
+                    
+                    ## 📊 README Comparison
+                    The system automatically compares your generated documentation with the original README to show:
+                    - Content coverage and gaps filled
+                    - Similarity metrics
+                    - Sections added beyond the original
+                    - Style consistency analysis
                     """
                     )
 
@@ -954,10 +999,6 @@ def create_interface():
                 api_key,
                 model_name,
                 repo_path,
-                readme_check,
-                api_docs_check,
-                tutorial_check,
-                architecture_check,
             ],
             outputs=[
                 init_status,
