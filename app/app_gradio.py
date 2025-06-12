@@ -54,13 +54,12 @@ We'll demonstrate the agent using the Flask web framework repository:
 - **Purpose**: Lightweight WSGI web application framework
 
 ## What the Agent Will Do:
-1. 🔍 **Analyze** the repository structure and dependencies
+1. 🔍 **Initialize** the agent with repository configuration
 2. 📝 **Generate** comprehensive documentation (README, API docs, tutorials)
 3. ⚖️ **Compare** generated docs with existing ones
 4. 📊 **Provide** similarity scores and recommendations
 
 ## Expected Outputs:
-- Repository analysis with complexity metrics
 - Generated documentation in multiple formats
 - Comparison scores showing alignment with original docs
 - Recommendations for improvement
@@ -155,87 +154,16 @@ We'll demonstrate the agent using the Flask web framework repository:
                 gr.update(visible=False),
             )
 
-    def analyze_repository(self):
-        """Analyze the repository"""
-        if not self.agent:
-            return (
-                "⚠️ Warning: Please initialize the agent first",
-                "",
-                "",
-                "",
-                gr.update(visible=False),
-            )
-
-        try:
-            self.repo_metadata, self.modules = self.agent.analyze_repository()
-
-            # Format analysis results
-            metrics = f"""
-## 📊 Repository Metrics
-- **Files:** {self.repo_metadata.file_count}
-- **Modules:** {len(self.modules)}
-- **Dependencies:** {len(self.repo_metadata.dependencies)}
-- **Complexity Score:** {self.repo_metadata.complexity_score:.2f}
-- **Repository Size:** {self.repo_metadata.size:,} bytes
-"""
-
-            details = f"""
-## 📋 Repository Details
-- **Name:** {self.repo_metadata.name}
-- **Language:** {self.repo_metadata.language}
-- **Description:** {self.repo_metadata.description or 'No description available'}
-- **License:** {getattr(self.repo_metadata, 'license', 'Not specified')}
-"""
-
-            dependencies = ""
-            if self.repo_metadata.dependencies:
-                deps_list = "\n".join([f"- {dep}" for dep in self.repo_metadata.dependencies[:10]])
-                dependencies = f"""
-## 📦 Dependencies (showing first 10)
-{deps_list}
-"""
-                if len(self.repo_metadata.dependencies) > 10:
-                    dependencies += f"\n*... and {len(self.repo_metadata.dependencies) - 10} more dependencies*"
-
-            # Module structure analysis
-            module_structure = f"""
-## 🗂️ Module Structure
-"""
-            for module in self.modules[:8]:  # Show first 8 modules
-                module_structure += f"""
-### {module.name}
-- **Path:** `{module.path}`
-- **Functions:** {len(module.functions)}
-- **Classes:** {len(module.classes)}
-- **Lines of Code:** {module.lines_of_code}
-"""
-
-            if len(self.modules) > 8:
-                module_structure += f"\n*... and {len(self.modules) - 8} more modules*"
-
-            return (
-                "✅ Analysis completed!",
-                metrics,
-                details,
-                dependencies + module_structure,
-                gr.update(visible=True),
-            )
-
-        except Exception as e:
-            return (
-                f"❌ Analysis failed: {e}",
-                "",
-                "",
-                "",
-                gr.update(visible=False),
-            )
-
     def generate_documentation(self):
         """Generate documentation"""
         if not self.agent:
             return "⚠️ Warning: Please initialize the agent first", "", gr.update(visible=False)
 
         try:
+            # Automatically run analysis if not already done (internal step, not shown in UI)
+            if not hasattr(self.agent, "repository_metadata") or not self.agent.repository_metadata:
+                self.repo_metadata, self.modules = self.agent.analyze_repository()
+
             self.generated_docs = self.agent.generate_documentation()
 
             # Format generated documents for display
@@ -517,11 +445,6 @@ We'll demonstrate the agent using the Flask web framework repository:
             "",
             "",
             "",
-            "",
-            "",
-            "",
-            gr.update(visible=False),
-            "",
             gr.update(visible=False),
             "",
             gr.update(visible=False),
@@ -539,11 +462,6 @@ We'll demonstrate the agent using the Flask web framework repository:
                     "",
                     "",
                     "",
-                    "",
-                    "",
-                    "",
-                    gr.update(visible=False),
-                    "",
                     gr.update(visible=False),
                     "",
                     gr.update(visible=False),
@@ -555,98 +473,17 @@ We'll demonstrate the agent using the Flask web framework repository:
                 "",
                 "",
                 "",
-                "",
-                "",
-                "",
-                gr.update(visible=False),
-                "",
                 gr.update(visible=False),
                 "",
                 gr.update(visible=False),
             )
             return
 
-        # Step 2: Analyze Repository
+        # Step 2: Generate Documentation (skipping analysis)
         yield (
             init_status,
-            "🔄 Analyzing repository structure...",
-            "",
-            "",
-            "",
-            "",
-            "",
-            gr.update(visible=False),
-            "",
-            gr.update(visible=False),
-            "",
-            gr.update(visible=False),
-        )
-
-        try:
-            analysis_result = self.analyze_repository()
-            analysis_status, metrics, details, dependencies, results_visible = analysis_result
-
-            if "❌" in analysis_status:
-                yield (
-                    init_status,
-                    analysis_status,
-                    "",
-                    "",
-                    metrics,
-                    details,
-                    dependencies,
-                    results_visible,
-                    "",
-                    gr.update(visible=False),
-                    "",
-                    gr.update(visible=False),
-                )
-                return
-
-            # Show analysis results immediately
-            yield (
-                init_status,
-                analysis_status,
-                "",
-                "",
-                metrics,
-                details,
-                dependencies,
-                results_visible,
-                "",
-                gr.update(visible=False),
-                "",
-                gr.update(visible=False),
-            )
-
-        except Exception as e:
-            analysis_status = f"❌ Analysis failed: {e}"
-            yield (
-                init_status,
-                analysis_status,
-                "",
-                "",
-                "",
-                "",
-                "",
-                gr.update(visible=False),
-                "",
-                gr.update(visible=False),
-                "",
-                gr.update(visible=False),
-            )
-            return
-
-        # Step 3: Generate Documentation
-        yield (
-            init_status,
-            analysis_status,
             "🔄 Generating documentation...",
             "",
-            metrics,
-            details,
-            dependencies,
-            gr.update(visible=True),
             "",
             gr.update(visible=False),
             "",
@@ -660,14 +497,9 @@ We'll demonstrate the agent using the Flask web framework repository:
             if "❌" in generation_status:
                 yield (
                     init_status,
-                    analysis_status,
                     generation_status,
                     "",
-                    metrics,
-                    details,
-                    dependencies,
-                    gr.update(visible=True),
-                    docs_preview,
+                    "",
                     downloads,
                     "",
                     gr.update(visible=False),
@@ -677,13 +509,8 @@ We'll demonstrate the agent using the Flask web framework repository:
             # Show generation results immediately
             yield (
                 init_status,
-                analysis_status,
                 generation_status,
                 "",
-                metrics,
-                details,
-                dependencies,
-                gr.update(visible=True),
                 docs_preview,
                 downloads,
                 "",
@@ -694,13 +521,8 @@ We'll demonstrate the agent using the Flask web framework repository:
             generation_status = f"❌ Generation failed: {e}"
             yield (
                 init_status,
-                analysis_status,
                 generation_status,
                 "",
-                metrics,
-                details,
-                dependencies,
-                gr.update(visible=True),
                 "",
                 gr.update(visible=False),
                 "",
@@ -708,16 +530,11 @@ We'll demonstrate the agent using the Flask web framework repository:
             )
             return
 
-        # Step 4: Compare Documentation
+        # Step 3: Compare Documentation
         yield (
             init_status,
-            analysis_status,
             generation_status,
             "🔄 Comparing with existing documentation...",
-            metrics,
-            details,
-            dependencies,
-            gr.update(visible=True),
             docs_preview,
             downloads,
             "",
@@ -736,13 +553,8 @@ We'll demonstrate the agent using the Flask web framework repository:
             # Show final results
             yield (
                 init_status,
-                analysis_status,
                 generation_status,
                 comparison_status,
-                metrics,
-                details,
-                dependencies,
-                gr.update(visible=True),
                 docs_preview,
                 downloads,
                 comparison_content,
@@ -754,13 +566,8 @@ We'll demonstrate the agent using the Flask web framework repository:
             comparison_content = f"Error during comparison: {str(e)}"
             yield (
                 init_status,
-                analysis_status,
                 generation_status,
                 comparison_status,
-                metrics,
-                details,
-                dependencies,
-                gr.update(visible=True),
                 docs_preview,
                 downloads,
                 comparison_content,
@@ -871,35 +678,21 @@ def create_interface():
                 init_btn = gr.Button("🚀 Start Complete Workflow", variant="primary", size="lg")
                 init_status = gr.Markdown("")
 
-        # Step 2: Analysis
-        with gr.Row():
-            with gr.Column():
-                gr.HTML('<div class="section-box"><h2><span class="step-number">2</span>Repository Analysis</h2></div>')
-                analysis_status = gr.Markdown("⏳ Waiting for initialization...")
-
-        with gr.Row(visible=False) as analysis_results:
-            with gr.Column(scale=1):
-                metrics_output = gr.Markdown("")
-            with gr.Column(scale=1):
-                details_output = gr.Markdown("")
-            with gr.Column(scale=1):
-                dependencies_output = gr.Markdown("")
-
-        # Step 3: Generation
+        # Step 2: Generation
         with gr.Row():
             with gr.Column():
                 gr.HTML(
-                    '<div class="section-box"><h2><span class="step-number">3</span>Documentation Generation</h2></div>'
+                    '<div class="section-box"><h2><span class="step-number">2</span>Documentation Generation</h2></div>'
                 )
-                generation_status = gr.Markdown("⏳ Waiting for analysis...")
+                generation_status = gr.Markdown("")
 
-        # Step 4: Comparison
+        # Step 3: Comparison
         with gr.Row():
             with gr.Column():
                 gr.HTML(
-                    '<div class="section-box"><h2><span class="step-number">4</span>Documentation Comparison</h2></div>'
+                    '<div class="section-box"><h2><span class="step-number">3</span>Documentation Comparison</h2></div>'
                 )
-                comparison_status = gr.Markdown("⏳ Waiting for documentation generation...")
+                comparison_status = gr.Markdown("")
 
         # Results and Download Section
         with gr.Row():
@@ -926,13 +719,13 @@ def create_interface():
                     - Set repository path or GitHub URL
                     - Choose model and documentation types
                     
-                    **Step 2:** Analyze your repository
-                    - The system will automatically clone GitHub repos
-                    - Review metrics and detected dependencies
-                    
-                    **Step 3:** Generate documentation
-                    - Click "Generate Documentation" to create docs
+                    **Step 2:** Generate documentation
+                    - Click "Start Complete Workflow" to create docs
                     - Preview and download your documentation
+                    
+                    **Step 3:** Review comparison results
+                    - View similarity scores and quality metrics
+                    - Get recommendations for improvement
                     
                     ## 📁 Repository Input Options
                     - **Local path**: `./my-project` or `/path/to/repo`
@@ -970,13 +763,8 @@ def create_interface():
             ],
             outputs=[
                 init_status,
-                analysis_status,
                 generation_status,
                 comparison_status,
-                metrics_output,
-                details_output,
-                dependencies_output,
-                analysis_results,
                 docs_preview,
                 downloads_area,
                 comparison_results_display,
