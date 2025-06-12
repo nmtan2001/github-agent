@@ -70,7 +70,7 @@ class DocumentationComparator:
 
         self.stop_words = set(stopwords.words("english"))
 
-    def compare_documents(self, generated_doc: str, existing_doc: str, doc_type: str = "general") -> ComparisonResult:
+    def compare_documents(self, generated_doc: str, existing_doc: str) -> ComparisonResult:
         """Compare generated documentation with existing documentation"""
 
         # Calculate various similarity metrics
@@ -473,7 +473,7 @@ Key differences:
                 return self.compare_comprehensive_documentation(generated_content, existing_docs)
 
             if doc_type in existing_dict:
-                result = self.compare_documents(generated_content, existing_dict[doc_type], doc_type)
+                result = self.compare_documents(generated_content, existing_dict[doc_type])
                 results[doc_type] = result
 
         return results
@@ -493,7 +493,7 @@ Key differences:
 
         # Now compare the comprehensive doc against the aggregated content
         # We'll store the result under the 'comprehensive' key
-        result = self.compare_documents(comprehensive_doc, aggregated_existing_content, "comprehensive")
+        result = self.compare_documents(comprehensive_doc, aggregated_existing_content)
 
         return {"comprehensive": result}
 

@@ -207,19 +207,19 @@ class ContentSummarizer:
                     result.append(f" (and {len(functions) - 3} more)")
         return "\n".join(result)
 
-    def summarize_existing_documentation(self, doc_content: str, doc_type: str) -> str:
+    def summarize_existing_documentation(self, doc_content: str) -> str:
         """Summarize existing documentation for context"""
-        if not self.should_summarize(doc_content, threshold=500):
+        if not self.should_summarize(doc_content, threshold=1500):
             return doc_content
 
-        content_hash = hash(f"{doc_type}:{doc_content}")
+        content_hash = hash(doc_content)
         if content_hash in self._summary_cache:
             return self._summary_cache[content_hash]
 
         prompt = PromptTemplate(
-            input_variables=["content", "doc_type"],
+            input_variables=["content"],
             template="""
-            Summarize this existing {doc_type} documentation to provide context for new documentation generation:
+            Summarize this existing documentation to provide context for new documentation generation:
             
             {content}
             
@@ -236,17 +236,16 @@ class ContentSummarizer:
 
         try:
             chain = prompt | self.llm | StrOutputParser()
-            summary = chain.invoke({"content": doc_content, "doc_type": doc_type})
+            summary = chain.invoke({"content": doc_content})
 
             self._summary_cache[content_hash] = summary
-            logger.info(f"Summarized {doc_type} documentation: {len(doc_content)} -> {len(summary)} chars")
+            logger.info(f"Summarized documentation: {len(doc_content)} -> {len(summary)} chars")
             return summary
 
         except Exception as e:
-            logger.error(f"Error summarizing {doc_type} documentation: {e}")
+            logger.error(f"Error summarizing documentation: {e}")
             return doc_content[:300] + "..."
 
     def clear_cache(self):
         """Clear the summary cache"""
-        self._summary_cache.clear()
-        logger.info("Summary cache cleared")
+        self._summary_cache = {}

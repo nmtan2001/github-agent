@@ -394,7 +394,6 @@ class DocumentationAgent:
         generated_docs = self.enhanced_generator.generate_documentation_with_context(
             repo_path=self.config.repo_path,
             output_format="markdown",
-            doc_types=self.config.doc_types,
             context_similarity_threshold=0.7,
         )
 
