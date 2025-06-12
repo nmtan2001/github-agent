@@ -462,19 +462,40 @@ Key differences:
     def compare_multiple_documents(
         self, generated_docs: List[Tuple[str, str]], existing_docs: List[Tuple[str, str]]
     ) -> Dict[str, ComparisonResult]:
-        """Compare multiple document pairs"""
+        """Compare multiple document pairs, with special handling for 'comprehensive' docs."""
 
         results = {}
-
-        # Create a mapping of document types
         existing_dict = {doc_type: content for doc_type, content in existing_docs}
 
         for doc_type, generated_content in generated_docs:
+            if doc_type == "comprehensive":
+                # Special handling for the comprehensive document
+                return self.compare_comprehensive_documentation(generated_content, existing_docs)
+
             if doc_type in existing_dict:
                 result = self.compare_documents(generated_content, existing_dict[doc_type], doc_type)
                 results[doc_type] = result
 
         return results
+
+    def compare_comprehensive_documentation(
+        self, comprehensive_doc: str, existing_docs: List[Tuple[str, str]]
+    ) -> Dict[str, ComparisonResult]:
+        """Compare a single comprehensive document against all existing documentation combined."""
+        if not existing_docs:
+            return {}
+
+        # Aggregate all existing documentation into a single string
+        # We can add separators to give the model some context on the document boundaries
+        aggregated_existing_content = "\n\n--- (New Document) ---\n\n".join(
+            [f"# Existing Document: {doc_type}\n\n{content}" for doc_type, content in existing_docs]
+        )
+
+        # Now compare the comprehensive doc against the aggregated content
+        # We'll store the result under the 'comprehensive' key
+        result = self.compare_documents(comprehensive_doc, aggregated_existing_content, "comprehensive")
+
+        return {"comprehensive": result}
 
     def generate_comparison_report(self, comparison_results: Dict[str, ComparisonResult]) -> str:
         """Generate a comprehensive comparison report"""

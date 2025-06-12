@@ -10,6 +10,7 @@ import tempfile
 import atexit
 import shutil
 import json
+from dataclasses import asdict
 
 # Import our modules
 try:
@@ -191,23 +192,17 @@ The agent creates a single, comprehensive documentation file that combines all a
             return "⚠️ Warning: Please initialize the agent first", "", gr.update(visible=False)
 
         try:
-            # Check if using enhanced generator or standard generator
             if self.agent.config.use_enhanced_generator:
-                # Generate documentation with context-aware pipeline
                 print("🚀 Starting enhanced documentation generation pipeline...")
 
-                # First ensure repository analysis is done
                 if not hasattr(self.agent, "repository_metadata") or not self.agent.repository_metadata:
                     print("📊 Running repository analysis first...")
                     self.repo_metadata, self.modules = self.agent.analyze_repository()
 
                 result = self.agent.run_enhanced_pipeline()
-
-                # Extract the generated documents (now returns List[GeneratedDocument])
                 generated_docs = result["documents"]
                 metadata = result["metadata"]
 
-                # Format results for display with repository analysis info
                 repo_info = ""
                 if hasattr(self.agent, "repository_metadata") and self.agent.repository_metadata:
                     repo_info = f"""
@@ -218,131 +213,50 @@ The agent creates a single, comprehensive documentation file that combines all a
 - **Size:** {self.agent.repository_metadata.size:,} bytes
 - **Modules:** {len(self.modules) if hasattr(self, 'modules') else 0}
 - **Dependencies:** {len(self.agent.repository_metadata.dependencies)}
-- **Complexity:** {self.agent.repository_metadata.complexity_score:.2f}
 """
 
                 preview_content = f"""# 📚 Comprehensive Documentation Generated
 {repo_info}
-## 📊 Generation Summary
-- **Repository:** {self.agent.repository_metadata.name if hasattr(self.agent, 'repository_metadata') and self.agent.repository_metadata else 'N/A'}
-- **Document Type:** Comprehensive (All-in-One)
-- **Enhanced with Embeddings:** {metadata.get('enhanced_with_embeddings', False)}
-- **Original README Used:** {metadata.get('existing_docs_loaded', False)}
-- **Generation Method:** {metadata.get('generation_method', 'enhanced')}
-
 ## 📄 Generated Document Preview
-
 """
-
-                # Add the comprehensive document to the preview
                 if generated_docs:
-                    doc = generated_docs[0]  # Should be just one comprehensive document
+                    doc = generated_docs[0]
                     preview_content += f"### {doc.title} ({doc.word_count:,} words)\n"
                     preview_content += f"{doc.content[:2000]}{'...' if len(doc.content) > 2000 else ''}\n\n"
 
-                preview_content += """
-## ✅ Document Includes:
-- ✅ **Complete Overview:** Project description and features
-- ✅ **Installation Guide:** Prerequisites and setup instructions  
-- ✅ **API Reference:** All modules, classes, and functions documented
-- ✅ **Usage Examples:** Practical code examples
-- ✅ **Architecture:** Technical design and structure
-- ✅ **Advanced Topics:** Configuration, troubleshooting, performance
-- ✅ **Contributing Guidelines:** How to contribute to the project
-"""
-
-                # Create temporary file for download
                 file_outputs = []
-
-                # Save the comprehensive document
                 doc_path = os.path.join(self.temp_dir, "readme_summarized.md")
                 with open(doc_path, "w", encoding="utf-8") as f:
                     if generated_docs:
                         f.write(f"# {generated_docs[0].title}\n\n{generated_docs[0].content}")
                 file_outputs.append(doc_path)
 
-                # Save metadata
                 metadata_path = os.path.join(self.temp_dir, "generation_metadata.json")
                 with open(metadata_path, "w", encoding="utf-8") as f:
-                    import json
-
-                    json.dump(
-                        {
-                            "metadata": metadata,
-                            "documents": [
-                                {
-                                    "title": doc.title,
-                                    "doc_type": doc.doc_type,
-                                    "word_count": doc.word_count,
-                                    "metadata": doc.metadata,
-                                }
-                                for doc in generated_docs
-                            ],
-                        },
-                        f,
-                        indent=2,
-                    )
+                    json.dump({"metadata": metadata, "documents": [asdict(d) for d in generated_docs]}, f, indent=2)
                 file_outputs.append(metadata_path)
 
-                # Store the results for comparison
                 self.result = result
-                self.generated_docs = generated_docs  # Store list of GeneratedDocument objects
+                self.generated_docs = generated_docs
+                self.agent.generated_docs = generated_docs
 
-                # Run comparison if enabled
-                if self.agent.config.include_comparison:
-                    try:
-                        print("🔄 Running documentation comparison...")
-                        self.agent.comparison_results = self.agent.compare_with_existing()
-                        print(f"✅ Comparison completed for {len(self.agent.comparison_results)} document types")
-                    except Exception as e:
-                        print(f"⚠️ Comparison failed: {e}")
-                        self.agent.comparison_results = {}
+                if "metadata" not in self.result:
+                    self.result["metadata"] = metadata
 
             else:
-                # Use standard pipeline that generates multiple documents
+                # Standard generator path (simplified)
                 print("🚀 Starting standard documentation generation pipeline...")
-
-                # First analyze if not already done
                 if not hasattr(self.agent, "repository_metadata") or not self.agent.repository_metadata:
                     self.repo_metadata, self.modules = self.agent.analyze_repository()
-
-                # Generate multiple documents
                 self.generated_docs = self.agent.generate_documentation()
-
-                # Format generated documents for display
-                doc_outputs = []
                 preview_content = "# 📚 Generated Documentation\n\n"
-
-                for doc in self.generated_docs:
-                    preview_content += f"""
-## {doc.doc_type.title()} Documentation
-**Word count:** {doc.word_count}
-
-### Content Preview:
-{doc.content[:1500]}{'...' if len(doc.content) > 1500 else ''}
-
----
-
-"""
-                    doc_outputs.append((f"{doc.doc_type}_documentation.md", doc.content))
-
-                # Create temporary files for download
                 file_outputs = []
-                for filename, content in doc_outputs:
-                    temp_path = os.path.join(self.temp_dir, filename)
-                    with open(temp_path, "w", encoding="utf-8") as f:
-                        f.write(content)
+                for doc in self.generated_docs:
+                    preview_content += f"## {doc.doc_type.title()} Documentation\n{doc.content[:1500]}...\n---\n"
+                    temp_path = os.path.join(self.temp_dir, f"{doc.doc_type}_doc.md")
+                    with open(temp_path, "w", "utf-8") as f:
+                        f.write(doc.content)
                     file_outputs.append(temp_path)
-
-                # Store results for compatibility
-                self.result = {
-                    "documentation": preview_content,
-                    "metadata": {
-                        "repo_path": self.agent.config.repo_path,
-                        "doc_types": [doc.doc_type for doc in self.generated_docs],
-                        "documents_count": len(self.generated_docs),
-                    },
-                }
 
             return (
                 "✅ Documentation generated successfully!",
@@ -433,121 +347,68 @@ The agent creates a single, comprehensive documentation file that combines all a
         if not self.agent:
             return "⚠️ Warning: Please initialize the agent first", gr.update(visible=False)
 
-        if not hasattr(self, "result") or not self.result:
+        if not self.generated_docs:
             return "⚠️ Warning: Please generate documentation first", gr.update(visible=False)
 
         try:
-            # Try to get actual comparison results from agent
-            if hasattr(self.agent, "comparison_results") and self.agent.comparison_results:
-                comparison_results = self.agent.comparison_results
+            print("🔄 Running documentation comparison...")
+            comparison_results = self.agent.compare_with_existing()
+            self.agent.comparison_results = comparison_results
+            print(f"✅ Comparison completed for {len(comparison_results)} document types")
 
-                comparison_content = "# 📊 README Comparison Results\n\n"
-
-                # Since we now have a single comprehensive document, show its comparison
-                if "comprehensive" in comparison_results:
-                    result = comparison_results["comprehensive"]
-                    metrics = result.metrics
-                    comparison_content += f"""## Comprehensive Documentation vs Original README
-
-### 📈 Similarity Metrics
-- **Semantic Similarity:** {metrics.semantic_similarity:.1%}
-- **Structural Similarity:** {metrics.structural_similarity:.1%}
-- **Content Coverage:** {metrics.content_coverage:.1%}
-- **ROUGE-1:** {metrics.rouge_scores.get('rouge1', 0):.1%}
-- **ROUGE-L:** {metrics.rouge_scores.get('rougeL', 0):.1%}
-- **BERTScore:** {metrics.bert_score:.1%}
-- **Word Count Ratio:** {metrics.word_count_ratio:.2f}
-
-### 🎯 Analysis
-{result.detailed_analysis.get('summary', 'No detailed analysis available')}
-
-### 💡 Recommendations for README Enhancement
-"""
-                    for rec in result.recommendations[:5]:  # Show top 5 recommendations
-                        comparison_content += f"- {rec}\n"
-
-                    if result.missing_sections:
-                        comparison_content += (
-                            f"\n**Sections Added Beyond Original README:** {', '.join(result.missing_sections)}\n"
-                        )
-
-                    if result.additional_sections:
-                        comparison_content += (
-                            f"**New Comprehensive Sections:** {', '.join(result.additional_sections)}\n"
-                        )
-
-                    comparison_content += "\n---\n\n"
-                else:
-                    # Fallback if no comprehensive comparison
-                    comparison_content += "No comparison data available for comprehensive documentation.\n"
-
-                # Save comparison results to file
-                comparison_file = os.path.join(self.temp_dir, "readme_comparison_results.json")
-                with open(comparison_file, "w", encoding="utf-8") as f:
-                    import json
-                    from dataclasses import asdict
-
-                    serializable_results = {}
-                    for doc_type, result in comparison_results.items():
-                        serializable_results[doc_type] = asdict(result)
-
-                    json.dump(serializable_results, f, indent=2, default=str)
-
-                return (
-                    comparison_content,
-                    gr.update(visible=True),
+            if not comparison_results:
+                return """# 📊 README Comparison
+## ℹ️ No Original README Found
+The agent could not find an existing README.md to compare against. The generated documentation is based solely on code analysis.
+""", gr.update(
+                    visible=True
                 )
 
-            else:
-                # Fall back to context integration summary
-                metadata = self.result.get("metadata", {})
-                existing_docs_count = metadata.get("existing_docs_count", 0)
+            result = comparison_results.get("comprehensive")
+            if not result:
+                return "Could not find comparison results for 'comprehensive' document.", gr.update(visible=True)
 
-                if existing_docs_count == 0:
-                    return (
-                        "ℹ️ No existing README found - comparison not available",
-                        gr.update(visible=False),
-                    )
+            overall_score = (
+                result.metrics.semantic_similarity
+                + result.metrics.content_coverage
+                + result.metrics.structural_similarity
+            ) / 3
 
-                comparison_content = f"""# 📊 README Context Integration Summary
-
-## 📚 Original README Analysis
-- **README Content Found:** ✅ Yes ({existing_docs_count} chunks analyzed)
-- **Context Used in Generation:** ✅ Yes
-
-### 🎯 How the Original README Was Used
-- **Smart Discovery:** Automatically found and analyzed the original README
-- **Context-Aware Generation:** The comprehensive documentation was enriched with patterns from the original README
-- **Style Preservation:** Maintained consistency with the original README's writing style
-- **Content Enhancement:** The new documentation expands on the original README with:
-  - Detailed API reference
-  - Architecture documentation
-  - Advanced usage examples
-  - Troubleshooting guides
-  - Performance considerations
-
-### 📈 Documentation Improvement
-The generated comprehensive documentation significantly expands upon the original README by adding:
-- Complete API documentation for all modules and functions
-- Technical architecture details
-- Multiple usage examples
-- Configuration guides
-- Security considerations
-- Contributing guidelines
-
-*Note: For detailed similarity metrics, the comparison feature analyzes how well the new documentation covers and expands the original README content.*
+            comparison_content = f"""
+# 🎯 Overall Comparison Summary
+**Average Quality Score:** {overall_score:.3f} / 1.000
+{'🎉 Excellent alignment!' if overall_score > 0.8 else '👍 Good alignment!' if overall_score > 0.6 else '⚠️ Moderate alignment' if overall_score > 0.4 else '❌ Low alignment'}
+---
+## Comprehensive Documentation vs Original README
+### 📊 Similarity Metrics
+- **Semantic Similarity:** {result.metrics.semantic_similarity:.3f}
+- **Content Coverage:** {result.metrics.content_coverage:.3f}
+- **Structural Similarity:** {result.metrics.structural_similarity:.3f}
+- **ROUGE-1 Score:** {result.metrics.rouge_scores.get('rouge1', 0):.3f}
+- **ROUGE-2 Score:** {result.metrics.rouge_scores.get('rouge2', 0):.3f}
+- **ROUGE-L Score:** {result.metrics.rouge_scores.get('rougeL', 0):.3f}
+- **Word Count Ratio:** {result.metrics.word_count_ratio:.3f}
+### 📋 Analysis Summary
+{result.detailed_analysis.get('summary', 'No summary available')}
+### 💡 Top Recommendations
 """
+            for i, rec in enumerate(result.recommendations[:3], 1):
+                comparison_content += f"{i}. {rec}\n"
+            if result.missing_sections:
+                comparison_content += f"### ❌ Missing Sections\n`{', '.join(result.missing_sections)}`\n"
+            if result.additional_sections:
+                comparison_content += f"### ✅ New Sections\n`{', '.join(result.additional_sections)}`\n"
 
-                return (
-                    comparison_content,
-                    gr.update(visible=True),
-                )
+            comparison_file = os.path.join(self.temp_dir, "readme_comparison_results.json")
+            with open(comparison_file, "w", encoding="utf-8") as f:
+                json.dump({k: asdict(v) for k, v in comparison_results.items()}, f, indent=2)
+
+            return comparison_content, gr.update(visible=True)
 
         except Exception as e:
             import traceback
 
-            error_details = f"❌ Comparison failed: {e}\n\nDetails:\n{traceback.format_exc()}"
-            return error_details, gr.update(visible=False)
+            return f"❌ Comparison failed: {e}\n\nDetails:\n{traceback.format_exc()}", gr.update(visible=False)
 
     def full_workflow(self, api_key, model_name, repo_path):
         """Complete workflow: Initialize -> Analyze -> Generate -> Compare"""
@@ -924,10 +785,9 @@ def create_interface():
                 docs_preview = gr.Markdown("", label="Documentation Preview")
                 downloads_area = gr.File(label="📥 Download Generated Files", file_count="multiple", visible=False)
 
-        # Comparison Results Section
+        # Comparison Results Section (content only, no redundant header)
         with gr.Row(visible=True) as comparison_section:
             with gr.Column():
-                gr.HTML('<div class="section-box"><h2>⚖️ Comparison with Original README</h2></div>')
                 comparison_results_display = gr.Markdown("", label="README Comparison Analysis")
 
         # Help Section

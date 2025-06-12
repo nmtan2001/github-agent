@@ -597,7 +597,7 @@ class DocumentationAgent:
             raise
 
     def _find_existing_docs(self, docs_path: Optional[str] = None) -> List[Tuple[str, str]]:
-        """Find existing documentation files"""
+        """Find existing documentation files by searching the entire repository."""
         if docs_path:
             base_path = Path(docs_path)
         else:
@@ -610,41 +610,37 @@ class DocumentationAgent:
 
         existing_docs = []
 
-        # Common documentation file patterns
         doc_patterns = {
-            "readme": ["README.md", "README.rst", "README.txt", "readme.md"],
-            "api": ["API.md", "api.md", "docs/api.md", "docs/API.md"],
-            "tutorial": ["TUTORIAL.md", "tutorial.md", "docs/tutorial.md", "GETTING_STARTED.md"],
-            "architecture": ["ARCHITECTURE.md", "architecture.md", "docs/architecture.md"],
+            "readme": ["README.md", "readme.md", "README.rst", "README.txt", "README"],
+            "api": ["API.md", "api.md"],
+            "tutorial": ["TUTORIAL.md", "tutorial.md", "GETTING_STARTED.md"],
+            "architecture": ["ARCHITECTURE.md", "architecture.md"],
         }
 
+        exclude_dirs = [".git", ".venv", "node_modules", "__pycache__", "dist", "build"]
         self.logger.info(f"Searching for existing documentation in: {base_path}")
 
-        # Debug: List what files actually exist in the repository
-        if base_path.exists():
-            try:
-                files = list(base_path.glob("*"))
-                self.logger.info(f"Files in repository root: {[f.name for f in files[:10]]}")
-                # Check specifically for README files
-                readme_files = list(base_path.glob("README*"))
-                self.logger.info(f"README files found: {[f.name for f in readme_files]}")
-            except Exception as e:
-                self.logger.warning(f"Could not list repository files: {e}")
-        else:
-            self.logger.warning(f"Repository path does not exist: {base_path}")
-
         for doc_type, patterns in doc_patterns.items():
+            doc_found = False
             for pattern in patterns:
-                file_path = base_path / pattern
-                if file_path.exists():
+                found_files = list(base_path.glob(f"**/{pattern}"))
+
+                for file_path in found_files:
+                    if any(excluded in file_path.parts for excluded in exclude_dirs):
+                        continue
+
                     try:
                         with open(file_path, "r", encoding="utf-8") as f:
                             content = f.read()
                         existing_docs.append((doc_type, content))
                         self.logger.info(f"Found existing {doc_type} documentation: {file_path}")
-                        break  # Only take the first match per type
+                        doc_found = True
+                        break
                     except (UnicodeDecodeError, PermissionError) as e:
                         self.logger.warning(f"Could not read {file_path}: {str(e)}")
+
+                if doc_found:
+                    break
 
         if not existing_docs:
             self.logger.warning(f"No existing documentation found in {base_path}")
