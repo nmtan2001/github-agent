@@ -35,9 +35,9 @@ logger = logging.getLogger(__name__)
 class DocumentationConfig:
     """Configuration for documentation generation"""
 
-    model_name: str = "gpt-4"
+    model_name: str = "gpt-4o-mini"
     temperature: float = 0.3
-    max_tokens: int = 2000
+    max_tokens: int = 4000  # Increased for more comprehensive documentation
     include_examples: bool = True
     include_diagrams: bool = True
     format_type: str = "markdown"  # markdown, rst, html
@@ -185,11 +185,11 @@ class LLMDocumentationChain:
 
     def __init__(self, config: DocumentationConfig):
         self.config = config
-        # Updated to use latest OpenAI syntax
+        # Updated to use latest OpenAI syntax with higher token limit for comprehensive docs
         self.llm = ChatOpenAI(
             model=config.model_name,
             temperature=config.temperature,
-            max_tokens=config.max_tokens,
+            max_tokens=config.max_tokens,  # Now 4000 for detailed documentation
             api_key=os.getenv("OPENAI_API_KEY"),  # Explicit API key handling
         )
 
@@ -346,27 +346,80 @@ class LLMDocumentationChain:
             **Module Details**:
             {core_modules}
             
-            Create professional API documentation with:
+            Create professional API documentation with the following structure:
             
-            1. **API Overview**: Brief introduction to the API structure
-            2. **Core Modules**: Detailed documentation for each major module
-            3. **Classes**: Complete class documentation with methods and attributes
-            4. **Functions**: Detailed function documentation with parameters and returns
-            5. **Examples**: Practical usage examples for each major component
-            6. **Error Handling**: Common errors and how to handle them
-            7. **Authentication**: If applicable, authentication methods
-            8. **Response Formats**: Expected response structures
+            # {repo_name} API Documentation
+            
+            ## API Overview
+            Brief introduction to the API structure and purpose.
+            
+            ## Core Modules
+            
+            For each module, provide:
+            - Module purpose and overview
+            - Key classes with detailed method documentation
+            - Functions with parameters, return types, and usage examples
+            - Implementation details and design patterns
+            
+            ## Classes
+            
+            For each class, include:
+            - Class purpose and inheritance
+            - Constructor parameters
+            - Public methods with full signatures
+            - Usage examples with imports
+            - Error handling patterns
+            
+            ## Functions
+            
+            For each function, provide:
+            - Function purpose and behavior
+            - Parameter descriptions with types
+            - Return value documentation
+            - Example usage with realistic data
+            - Exception handling
+            
+            ## Examples
+            
+            Provide comprehensive examples showing:
+            - Basic usage patterns
+            - Advanced scenarios
+            - Integration examples
+            - Best practices
+            
+            ## Error Handling
+            
+            Document:
+            - Common exceptions and their causes
+            - Error handling strategies
+            - Debugging tips
+            
+            ## Authentication
+            
+            If applicable, document:
+            - Authentication methods
+            - API keys and tokens
+            - Security considerations
+            
+            ## Response Formats
+            
+            Document expected:
+            - Response structures
+            - Data formats
+            - Status codes
             
             **Requirements**:
             - Use actual class and function names from the code analysis
             - Include parameter types and return types where available
-            - Provide realistic code examples
-            - Follow Python documentation standards (docstring format)
-            - Include import statements in examples
-            - Group related functionality together
+            - Provide realistic, runnable code examples
+            - Follow Python documentation standards (PEP 257)
+            - Include proper import statements in all examples
+            - Group related functionality together logically
             - Use proper markdown formatting with syntax highlighting
+            - Make it comprehensive and production-ready
+            - Focus on developer experience and usability
             
-            Generate complete, developer-friendly API documentation.
+            Generate complete, professional, developer-friendly API documentation that serves as a comprehensive reference.
             """,
         )
 
@@ -444,7 +497,7 @@ class LLMDocumentationChain:
                 "key_features",
             ],
             template="""
-            Generate a comprehensive README.md for the {repo_name} project based on this analysis:
+            Generate a comprehensive, professional README.md for the {repo_name} project based on this analysis:
             
             **Project**: {repo_name}
             **Description**: {description}
@@ -456,27 +509,104 @@ class LLMDocumentationChain:
             **Example Modules**: {example_modules}
             **Key Features Detected**: {key_features}
             
-            Create a professional README that includes:
+            Create a professional README with this exact structure:
             
-            1. **Project Title & Description**: Clear, engaging description
-            2. **Table of Contents**: Well-organized navigation
-            3. **Installation**: Step-by-step installation instructions
-            4. **Quick Start**: Simple examples to get users started immediately
-            5. **Key Features**: Highlight the main capabilities based on code analysis
-            6. **Usage Examples**: Practical code examples from the actual modules
-            7. **API Overview**: Brief overview of main components
-            8. **Development**: How to contribute and develop
-            9. **License**: Standard license section
+            ```markdown
+            # {repo_name}
             
-            **Requirements**:
+            <div align="center">
+              <h1>{repo_name}</h1>
+              <p>[Engaging project description based on analysis]</p>
+            </div>
+            
+            ![Python](https://img.shields.io/badge/python-3.6%2B-blue)
+            ![License](https://img.shields.io/badge/license-MIT-green)
+            
+            ## Table of Contents
+            - [Installation](#installation)
+            - [Quick Start](#quick-start)
+            - [Key Features](#key-features)
+            - [Usage Examples](#usage-examples)
+            - [API Overview](#api-overview)
+            - [Development](#development)
+            - [License](#license)
+            
+            ## Installation
+            
+            To install {repo_name}, you can use pip:
+            
+            ```bash
+            pip install {repo_name}
+            ```
+            
+            ### Dependencies
+            
+            [List key dependencies with brief explanations]
+            
+            ## Quick Start
+            
+            Here's a simple example to get you started:
+            
+            ```python
+            # Realistic example based on actual modules
+            ```
+            
+            ## Key Features
+            
+            [List and explain key features based on code analysis]
+            
+            ## Usage Examples
+            
+            ### [Feature 1]
+            ```python
+            # Real code examples using actual module/function names
+            ```
+            
+            ### [Feature 2]
+            ```python
+            # More examples
+            ```
+            
+            ## API Overview
+            
+            ### Main Entry Points
+            [Document the actual entry points found]
+            
+            ### Core Modules
+            [Brief overview of main modules and their purposes]
+            
+            ## Development
+            
+            We welcome contributions! To get started:
+            
+            1. Fork the repository
+            2. Create a feature branch
+            3. Make your changes
+            4. Run tests
+            5. Submit a pull request
+            
+            ### Testing
+            ```bash
+            pytest
+            ```
+            
+            ## License
+            
+            This project is licensed under the MIT License.
+            ```
+            
+            **Critical Requirements**:
             - Be specific to THIS project, not generic
-            - Use actual module names and functions found in the code
-            - Include realistic examples based on the detected functionality
+            - Use actual module names and functions found in the code analysis
+            - Include realistic, runnable examples based on detected functionality
             - Match the technical level of a serious SDK project
-            - Use proper markdown formatting with code blocks
-            - Include badges and professional formatting
+            - Use proper markdown formatting with code blocks and syntax highlighting
+            - Include professional badges and formatting
+            - Make examples practical and immediately useful
+            - Focus on developer experience and getting started quickly
+            - Ensure all code examples are realistic and based on actual codebase
             
-            Generate complete, production-ready documentation.
+            Generate complete, production-ready README documentation that represents this specific project professionally.
             """,
         )
 
@@ -537,21 +667,88 @@ class LLMDocumentationChain:
         prompt = PromptTemplate(
             input_variables=["project_context", "entry_points"],
             template="""
-            Create a step-by-step tutorial for this project:
+            Create a comprehensive, beginner-friendly tutorial for this project:
             
             Project Context: {project_context}
             
             Entry Points: {entry_points}
             
-            Please include:
-            1. Clear learning objectives
-            2. Prerequisites and setup
-            3. Step-by-step instructions with code examples
-            4. Expected outputs and results
-            5. Common troubleshooting tips
-            6. Next steps for advanced usage
+            Generate a complete tutorial with this structure:
             
-            Make it beginner-friendly but comprehensive.
+            # [Project Name] Tutorial
+            
+            ## Learning Objectives
+            By the end of this tutorial, you will:
+            1. [Specific objective based on project functionality]
+            2. [Another objective]
+            3. [etc.]
+            
+            ## Prerequisites and Setup
+            
+            ### Prerequisites
+            - [List required knowledge and tools]
+            
+            ### Setup Instructions
+            1. **Install Dependencies**: Step-by-step installation
+               ```bash
+               # Specific commands for this project
+               ```
+            
+            2. **Environment Setup**: Configuration steps
+               ```bash
+               # Real setup commands
+               ```
+            
+            3. **Verification**: How to verify setup works
+               ```python
+               # Test code
+               ```
+            
+            ## Step-by-Step Instructions
+            
+            ### Step 1: [First Major Task]
+            1. [Detailed instruction]
+               ```python
+               # Real code example using actual modules
+               ```
+            
+            2. [Next instruction]
+               ```python
+               # More code
+               ```
+            
+            ### Step 2: [Second Major Task]
+            [Continue with detailed steps using actual project structure]
+            
+            ### Step 3: [Third Major Task]
+            [More steps with real examples]
+            
+            ## Expected Outputs and Results
+            - [Describe what users should see]
+            - [Include example outputs]
+            - [Show success indicators]
+            
+            ## Common Troubleshooting Tips
+            - **Issue 1**: [Common problem and solution]
+            - **Issue 2**: [Another problem and fix]
+            - **Issue 3**: [More troubleshooting]
+            
+            ## Next Steps for Advanced Usage
+            - [Suggestion for deeper exploration]
+            - [Advanced features to try]
+            - [Further learning resources]
+            
+            **Requirements**:
+            - Use actual entry points and module names from the project
+            - Include realistic, runnable code examples
+            - Make it truly beginner-friendly with clear explanations
+            - Include proper error handling in examples
+            - Focus on practical, hands-on learning
+            - Use the actual project structure and functionality
+            - Include real commands and file paths
+            - Make examples immediately executable
+            
+            Generate a comprehensive tutorial that gets users productive quickly with this specific project.
             """,
         )
 
@@ -581,7 +778,7 @@ class LLMDocumentationChain:
         prompt = PromptTemplate(
             input_variables=["system_info", "dependencies", "modules_structure"],
             template="""
-            Document the architecture of this system:
+            Create comprehensive architecture documentation for this system:
             
             System Information: {system_info}
             
@@ -589,15 +786,76 @@ class LLMDocumentationChain:
             
             Module Structure: {modules_structure}
             
-            Please include:
-            1. High-level system overview
-            2. Component relationships and interactions
-            3. Data flow patterns
-            4. Design decisions and rationale
-            5. Scalability and performance considerations
-            6. Future extensibility points
+            Generate detailed architecture documentation with this structure:
             
-            Focus on technical depth and clarity.
+            # System Architecture Documentation
+            
+            ## 1. High-Level System Overview
+            
+            [Provide a comprehensive overview of the system's purpose, scope, and main architectural principles. Explain what the system does and how it's structured at the highest level.]
+            
+            ## 2. Component Relationships and Interactions
+            
+            ### Modules and Their Interactions
+            
+            [For each major module, describe:]
+            - **Module Purpose**: What this module does
+            - **Key Components**: Main classes and functions
+            - **Dependencies**: What it depends on
+            - **Dependents**: What depends on it
+            - **Interface**: How other modules interact with it
+            
+            ### Interaction Flow
+            
+            [Describe the typical flow of operations through the system:]
+            1. [Step-by-step process flow]
+            2. [Include actual module/function names]
+            3. [Show data transformation at each stage]
+            
+            ## 3. Data Flow Patterns
+            
+            [Document how data moves through the system:]
+            - **Input Sources**: Where data enters the system
+            - **Processing Stages**: How data is transformed
+            - **Output Destinations**: Where results go
+            - **State Management**: How state is maintained
+            - **Error Handling**: How errors propagate
+            
+            ## 4. Design Decisions and Rationale
+            
+            [Explain key architectural decisions:]
+            - **Architectural Patterns**: Why certain patterns were chosen
+            - **Technology Choices**: Rationale for dependencies
+            - **Structure Decisions**: Why modules are organized this way
+            - **Interface Design**: Why APIs are designed as they are
+            
+            ## 5. Scalability and Performance Considerations
+            
+            [Address scalability aspects:]
+            - **Performance Bottlenecks**: Potential limitations
+            - **Scaling Strategies**: How to scale the system
+            - **Resource Management**: How resources are managed
+            - **Optimization Opportunities**: Areas for improvement
+            
+            ## 6. Future Extensibility Points
+            
+            [Identify extension opportunities:]
+            - **Plugin Architecture**: How to add new functionality
+            - **API Extensions**: How to extend existing APIs
+            - **Module Additions**: How to add new modules
+            - **Integration Points**: How to integrate with external systems
+            
+            **Requirements**:
+            - Use actual module names and structures from the analysis
+            - Include specific technical details about implementation
+            - Reference real dependencies and their purposes
+            - Make recommendations based on actual system characteristics
+            - Focus on practical architectural insights
+            - Include diagrams descriptions where helpful
+            - Address real concerns for this specific system
+            - Provide actionable guidance for developers
+            
+            Generate professional, technically accurate architecture documentation that serves as a comprehensive guide for developers working with this system.
             """,
         )
 
@@ -1169,13 +1427,104 @@ class EnhancedDocumentationGenerator:
         # Get relevant existing content for this section
         relevant_content = self._get_relevant_content_for_section(doc_type, context)
 
-        # Prepare prompt with context
-        prompt = self._build_context_aware_prompt(doc_type, context.code_analysis, relevant_content, output_format)
+        # Create a temporary LLMDocumentationChain to use its detailed prompts
+        # (Already imported at top of file)
 
-        # Generate content using LLM
+        config = DocumentationConfig(
+            model_name=self.llm_manager.config.model,
+            max_tokens=4000,  # Use higher token limit for comprehensive docs
+            temperature=0.3,
+        )
+        llm_chain = LLMDocumentationChain(config)
+
+        # Create a state object similar to what the LLMDocumentationChain expects
+        # Convert code_analysis dict back to RepositoryMetadata-like structure
+        from .analyzer import RepositoryMetadata, ModuleInfo, FunctionInfo, ClassInfo
+
+        # Create RepositoryMetadata from dict
+        repo_metadata = RepositoryMetadata(
+            name=context.code_analysis.get("name", "Unknown"),
+            description=context.code_analysis.get("description", ""),
+            language=context.code_analysis.get("language", "Python"),
+            size=context.code_analysis.get("size", 0),
+            file_count=context.code_analysis.get("file_count", 0),
+            dependencies=context.code_analysis.get("dependencies", []),
+            entry_points=context.code_analysis.get("entry_points", []),
+            test_coverage=context.code_analysis.get("test_coverage", 0.0),
+            complexity_score=context.code_analysis.get("complexity_score", 0.0),
+        )
+
+        # Create ModuleInfo objects from dict
+        modules = []
+        for module_dict in context.code_analysis.get("modules", [])[:10]:  # Limit to avoid context overflow
+            # Create functions
+            functions = []
+            for func_dict in module_dict.get("functions", []):
+                func = FunctionInfo(
+                    name=func_dict.get("name", ""),
+                    file_path=func_dict.get("file_path", module_dict.get("path", "")),
+                    line_start=func_dict.get("line_start", 1),
+                    line_end=func_dict.get("line_end", 1),
+                    docstring=func_dict.get("docstring", ""),
+                    parameters=func_dict.get("parameters", []),
+                    return_type=func_dict.get("return_type", ""),
+                    complexity=func_dict.get("complexity", 0),
+                    is_async=func_dict.get("is_async", False),
+                )
+                functions.append(func)
+
+            # Create classes
+            classes = []
+            for class_dict in module_dict.get("classes", []):
+                cls = ClassInfo(
+                    name=class_dict.get("name", ""),
+                    file_path=class_dict.get("file_path", module_dict.get("path", "")),
+                    line_start=class_dict.get("line_start", 1),
+                    line_end=class_dict.get("line_end", 1),
+                    docstring=class_dict.get("docstring", ""),
+                    methods=[],  # Simplified for now
+                    attributes=class_dict.get("attributes", []),
+                    inheritance=class_dict.get("inheritance", []),
+                )
+                classes.append(cls)
+
+            # Create module
+            module = ModuleInfo(
+                name=module_dict.get("name", ""),
+                path=module_dict.get("path", ""),
+                docstring=module_dict.get("docstring", ""),
+                imports=module_dict.get("imports", []),
+                functions=functions,
+                classes=classes,
+                constants=module_dict.get("constants", []),
+                language=module_dict.get("language", "python"),
+                lines_of_code=module_dict.get("lines_of_code", 0),
+                complexity_score=module_dict.get("complexity_score", 0.0),
+            )
+            modules.append(module)
+
+        # Create state for the detailed prompt methods
+        state = {
+            "code_analysis": repo_metadata,
+            "modules": modules,
+            "current_doc_type": doc_type,
+            "generated_sections": {},
+            "context_chunks": [],
+            "final_document": "",
+        }
+
+        # Use the detailed prompt methods from LLMDocumentationChain
         try:
-            response = self.llm_manager.generate_content(prompt, max_tokens=2000, temperature=0.3)
-            return response.strip()
+            if doc_type == "api":
+                return llm_chain._generate_api_section(state)
+            elif doc_type == "readme":
+                return llm_chain._generate_readme_section(state)
+            elif doc_type == "tutorial":
+                return llm_chain._generate_tutorial_section(state)
+            elif doc_type == "architecture":
+                return llm_chain._generate_architecture_section(state)
+            else:
+                return llm_chain._generate_generic_section(state)
         except Exception as e:
             logger.error(f"Error generating {doc_type} section: {e}")
             return f"Error generating {doc_type} section: {str(e)}"

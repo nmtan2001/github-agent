@@ -137,6 +137,8 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
                 doc_types=doc_types,
                 output_dir="gradio_output",
                 include_comparison=True,
+                use_enhanced_generator=True,  # Explicitly enable enhanced generator
+                auto_discover_docs=True,  # Enable auto-discovery of existing docs
             )
 
             self.agent = DocumentationAgent(config)
@@ -186,17 +188,36 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
             if self.agent.config.use_enhanced_generator:
                 # Generate documentation with context-aware pipeline
                 print("🚀 Starting enhanced documentation generation pipeline...")
+
+                # First ensure repository analysis is done
+                if not hasattr(self.agent, "repository_metadata") or not self.agent.repository_metadata:
+                    print("📊 Running repository analysis first...")
+                    self.repo_metadata, self.modules = self.agent.analyze_repository()
+
                 result = self.agent.run_enhanced_pipeline()
 
                 # Extract the generated documents (now returns List[GeneratedDocument])
                 generated_docs = result["documents"]
                 metadata = result["metadata"]
 
-                # Format results for display
-                preview_content = f"""# 📚 Documentation Generated with README Enhancement
+                # Format results for display with repository analysis info
+                repo_info = ""
+                if hasattr(self.agent, "repository_metadata") and self.agent.repository_metadata:
+                    repo_info = f"""
+## 📊 Repository Analysis
+- **Name:** {self.agent.repository_metadata.name}
+- **Language:** {self.agent.repository_metadata.language}
+- **Files:** {self.agent.repository_metadata.file_count:,}
+- **Size:** {self.agent.repository_metadata.size:,} bytes
+- **Modules:** {len(self.modules) if hasattr(self, 'modules') else 0}
+- **Dependencies:** {len(self.agent.repository_metadata.dependencies)}
+- **Complexity:** {self.agent.repository_metadata.complexity_score:.2f}
+"""
 
+                preview_content = f"""# 📚 Documentation Generated with README Enhancement
+{repo_info}
 ## 📊 Generation Summary
-- **Repository:** {metadata.get('repo_path', 'N/A')}
+- **Repository:** {self.agent.repository_metadata.name if hasattr(self.agent, 'repository_metadata') and self.agent.repository_metadata else 'N/A'}
 - **Total Documents:** {metadata.get('total_documents', 0)}
 - **Enhanced with Embeddings:** {metadata.get('enhanced_with_embeddings', False)}
 - **Existing Docs Used:** {metadata.get('existing_docs_loaded', False)}
@@ -256,6 +277,16 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
                 # Store the results for comparison
                 self.result = result
                 self.generated_docs = generated_docs  # Store list of GeneratedDocument objects
+
+                # Run comparison if enabled
+                if self.agent.config.include_comparison:
+                    try:
+                        print("🔄 Running documentation comparison...")
+                        self.agent.comparison_results = self.agent.compare_with_existing()
+                        print(f"✅ Comparison completed for {len(self.agent.comparison_results)} document types")
+                    except Exception as e:
+                        print(f"⚠️ Comparison failed: {e}")
+                        self.agent.comparison_results = {}
 
             else:
                 # Use standard pipeline that generates multiple documents
@@ -621,10 +652,9 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
             "🔄 Initializing agent...",
             "",
             "",
-            "",
             gr.update(visible=False),
             "",
-            gr.update(visible=False),
+            "",
         )
 
         try:
@@ -638,10 +668,9 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
                     init_status,
                     "",
                     "",
-                    "",
                     gr.update(visible=False),
                     "",
-                    gr.update(visible=False),
+                    "",
                 )
                 return
         except Exception as e:
@@ -649,22 +678,20 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
                 f"❌ Initialization failed: {e}",
                 "",
                 "",
-                "",
                 gr.update(visible=False),
                 "",
-                gr.update(visible=False),
+                "",
             )
             return
 
-        # Step 2: Generate Documentation (skipping analysis)
+        # Step 2: Generate Documentation (analysis happens internally)
         yield (
             init_status,
             "🔄 Generating documentation...",
             "",
-            "",
             gr.update(visible=False),
             "",
-            gr.update(visible=False),
+            "",
         )
 
         try:
@@ -676,22 +703,20 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
                     init_status,
                     generation_status,
                     "",
-                    "",
                     downloads,
                     "",
-                    gr.update(visible=False),
+                    "",
                 )
                 return
 
-            # Show generation results immediately
+            # Show generation results
             yield (
                 init_status,
                 generation_status,
-                "",
                 docs_preview,
                 downloads,
                 "",
-                gr.update(visible=False),
+                "",
             )
 
         except Exception as e:
@@ -700,10 +725,9 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
                 init_status,
                 generation_status,
                 "",
-                "",
                 gr.update(visible=False),
                 "",
-                gr.update(visible=False),
+                "",
             )
             return
 
@@ -711,11 +735,10 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
         yield (
             init_status,
             generation_status,
-            "🔄 Comparing with existing documentation...",
             docs_preview,
             downloads,
+            "🔄 Comparing with existing documentation...",
             "",
-            gr.update(visible=False),
         )
 
         try:
@@ -731,11 +754,10 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
             yield (
                 init_status,
                 generation_status,
-                comparison_status,
                 docs_preview,
                 downloads,
+                comparison_status,
                 comparison_content,
-                comparison_visible,
             )
 
         except Exception as e:
@@ -744,11 +766,10 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
             yield (
                 init_status,
                 generation_status,
-                comparison_status,
                 docs_preview,
                 downloads,
+                comparison_status,
                 comparison_content,
-                gr.update(visible=True),
             )
 
 
@@ -941,11 +962,10 @@ def create_interface():
             outputs=[
                 init_status,
                 generation_status,
-                comparison_status,
                 docs_preview,
                 downloads_area,
+                comparison_status,
                 comparison_results_display,
-                comparison_section,
             ],
             show_progress="hidden",  # This hides the default progress bars
         )
