@@ -1,5 +1,5 @@
 """
-Gradio Interface for LLM Documentation Agent - Enhanced with Comparison Features
+Gradio Interface for LLM Documentation Agent
 """
 
 import gradio as gr
@@ -69,17 +69,14 @@ We'll demonstrate the agent using the Flask web framework repository:
 """
         return walkthrough_md
 
-    def initialize_agent(
-        self, api_key, model_name, repo_path, readme, api_docs, tutorial, architecture, enable_comparison
-    ):
-        """Initialize the documentation agent with comparison capabilities"""
+    def initialize_agent(self, api_key, model_name, repo_path, readme, api_docs, tutorial, architecture):
+        """Initialize the documentation agent"""
         if not api_key:
             return (
                 "❌ Error: Please provide OpenAI API key",
                 "",
                 "",
                 "",
-                gr.update(visible=False),
                 gr.update(visible=False),
                 gr.update(visible=False),
             )
@@ -96,7 +93,6 @@ We'll demonstrate the agent using the Flask web framework repository:
                 "",
                 "",
                 "",
-                gr.update(visible=False),
                 gr.update(visible=False),
                 gr.update(visible=False),
             )
@@ -119,23 +115,18 @@ We'll demonstrate the agent using the Flask web framework repository:
                 model_name=model_name,
                 doc_types=doc_types,
                 output_dir="gradio_output",
-                include_comparison=enable_comparison,  # Enable comparison based on checkbox
+                include_comparison=True,  # Always enable comparison
             )
 
             self.agent = DocumentationAgent(config)
 
-            status_msg = "✅ Agent initialized successfully!"
-            if enable_comparison:
-                status_msg += " (Comparison enabled)"
-
             return (
-                status_msg,
+                "✅ Agent initialized successfully!",
                 "",
                 "",
                 "",
                 gr.update(visible=True),
                 gr.update(visible=True),
-                gr.update(visible=enable_comparison),  # Show comparison section if enabled
             )
 
         except Exception as e:
@@ -150,7 +141,7 @@ We'll demonstrate the agent using the Flask web framework repository:
 - Path exists: {Path(repo_path).exists() if not AgentConfig.is_github_url(repo_path) else "GitHub URL (will be cloned)"}
 - Model: {model_name}
 - Doc types: {doc_types}
-- Comparison enabled: {enable_comparison}
+- Comparison enabled: Always
 
 **Error details:**
 {traceback.format_exc()}
@@ -160,7 +151,6 @@ We'll demonstrate the agent using the Flask web framework repository:
                 "",
                 "",
                 "",
-                gr.update(visible=False),
                 gr.update(visible=False),
                 gr.update(visible=False),
             )
@@ -391,19 +381,16 @@ We'll demonstrate the agent using the Flask web framework repository:
         except Exception as e:
             return f"❌ Comparison failed: {e}", gr.update(visible=False)
 
-    def full_workflow(
-        self, api_key, model_name, repo_path, readme, api_docs, tutorial, architecture, enable_comparison
-    ):
-        """Complete workflow: Initialize -> Analyze -> Generate -> Compare (if enabled)"""
+    def full_workflow(self, api_key, model_name, repo_path, readme, api_docs, tutorial, architecture):
+        """Complete workflow: Initialize -> Analyze -> Generate -> Compare"""
         # Step 1: Initialize Agent
-        init_status, _, _, _, analysis_visible, generation_visible, comparison_visible = self.initialize_agent(
-            api_key, model_name, repo_path, readme, api_docs, tutorial, architecture, enable_comparison
+        init_status, _, _, _, analysis_visible, generation_visible = self.initialize_agent(
+            api_key, model_name, repo_path, readme, api_docs, tutorial, architecture
         )
 
         if "❌" in init_status:
             return (
                 init_status,
-                "⏸️ Workflow stopped due to initialization error",
                 "⏸️ Workflow stopped due to initialization error",
                 "⏸️ Workflow stopped due to initialization error",
                 "",
@@ -427,7 +414,6 @@ We'll demonstrate the agent using the Flask web framework repository:
                     init_status,
                     analysis_status,
                     "⏸️ Workflow stopped due to analysis error",
-                    "⏸️ Workflow stopped due to analysis error",
                     metrics,
                     details,
                     dependencies,
@@ -442,7 +428,6 @@ We'll demonstrate the agent using the Flask web framework repository:
             return (
                 init_status,
                 analysis_status,
-                "⏸️ Workflow stopped due to analysis error",
                 "⏸️ Workflow stopped due to analysis error",
                 "",
                 "",
@@ -481,7 +466,6 @@ We'll demonstrate the agent using the Flask web framework repository:
                 init_status,
                 analysis_status,
                 generation_status,
-                "⏸️ Workflow stopped due to generation error",
                 metrics,
                 details,
                 dependencies,
@@ -492,24 +476,19 @@ We'll demonstrate the agent using the Flask web framework repository:
                 gr.update(visible=False),
             )
 
-        # Step 4: Compare Documentation (if enabled)
-        comparison_status = ""
-        comparison_content = ""
-        comparison_visible = gr.update(visible=False)
-
-        if enable_comparison:
-            comparison_status = "🔄 Comparing with existing documentation..."
-            try:
-                comparison_result = self.compare_documentation()
-                comparison_content, comparison_visible = comparison_result
-                if "❌" in comparison_content or "⚠️" in comparison_content:
-                    comparison_status = comparison_content.split("\n")[0]  # First line as status
-                else:
-                    comparison_status = "✅ Comparison completed successfully!"
-            except Exception as e:
-                comparison_status = f"❌ Comparison failed: {e}"
-                comparison_content = ""
-                comparison_visible = gr.update(visible=False)
+        # Step 4: Compare Documentation
+        comparison_status = "🔄 Comparing with existing documentation..."
+        try:
+            comparison_result = self.compare_documentation()
+            comparison_content, comparison_visible = comparison_result
+            if "❌" in comparison_content or "⚠️" in comparison_content:
+                comparison_status = comparison_content.split("\n")[0]  # First line as status
+            else:
+                comparison_status = "✅ Comparison completed successfully!"
+        except Exception as e:
+            comparison_status = f"❌ Comparison failed: {e}"
+            comparison_content = ""
+            comparison_visible = gr.update(visible=False)
 
         return (
             init_status,
@@ -528,11 +507,11 @@ We'll demonstrate the agent using the Flask web framework repository:
 
 
 def create_interface():
-    """Create the enhanced Gradio interface with comparison features"""
+    """Create the Gradio interface with comparison features"""
     agent_interface = DocumentationAgentInterface()
 
     with gr.Blocks(
-        title="LLM Documentation Agent - Enhanced",
+        title="LLM Documentation Agent",
         theme=gr.themes.Soft(),
         css="""
         .gradio-container {
@@ -578,9 +557,8 @@ def create_interface():
             gr.HTML(
                 """
                 <div class="main-header">
-                    <h1>🤖 LLM Documentation Agent - Enhanced</h1>
-                    <p>Intelligent documentation generation, analysis, and comparison for software repositories</p>
-                    <p><strong>✨ New: Comparison features with similarity scoring and alignment metrics</strong></p>
+                    <h1>🤖 LLM Documentation Agent</h1>
+                    <p>Intelligent documentation generation and analysis for software repositories</p>
                 </div>
             """
             )
@@ -628,13 +606,6 @@ def create_interface():
                     tutorial_check = gr.Checkbox(label="Tutorial", value=True)
                     architecture_check = gr.Checkbox(label="Architecture", value=True)
 
-                with gr.Row():
-                    enable_comparison = gr.Checkbox(
-                        label="🔍 Enable Documentation Comparison",
-                        value=True,
-                        info="Compare generated docs with existing ones and show similarity metrics",
-                    )
-
                 init_btn = gr.Button("🚀 Start Complete Workflow", variant="primary", size="lg")
                 init_status = gr.Markdown("")
 
@@ -660,7 +631,7 @@ def create_interface():
                 )
                 generation_status = gr.Markdown("⏳ Waiting for analysis...")
 
-        # Step 4: Comparison (New!)
+        # Step 4: Comparison
         with gr.Row():
             with gr.Column():
                 gr.HTML(
@@ -674,8 +645,8 @@ def create_interface():
                 docs_preview = gr.Markdown("", label="Documentation Preview")
                 downloads_area = gr.File(label="📥 Download Generated Files", file_count="multiple", visible=False)
 
-        # Comparison Results Section (New!)
-        with gr.Row(visible=False) as comparison_section:
+        # Comparison Results Section
+        with gr.Row(visible=True) as comparison_section:
             with gr.Column():
                 gr.HTML('<div class="section-box"><h2>⚖️ Comparison Results & Similarity Analysis</h2></div>')
                 comparison_results_display = gr.Markdown("", label="Comparison Analysis")
@@ -692,29 +663,14 @@ def create_interface():
                     - Enter your OpenAI API key
                     - Set repository path or GitHub URL
                     - Choose model and documentation types
-                    - ✨ **NEW:** Enable comparison to get similarity metrics!
                     
                     **Step 2:** Analyze your repository
                     - The system will automatically clone GitHub repos
                     - Review metrics and detected dependencies
                     
                     **Step 3:** Generate documentation
-                    - High-quality docs created using LLM analysis
+                    - Click "Generate Documentation" to create docs
                     - Preview and download your documentation
-                    
-                    **Step 4:** Compare with existing docs ✨ **NEW!**
-                    - Semantic similarity scoring
-                    - Content coverage analysis
-                    - Structural comparison
-                    - ROUGE and BERT similarity metrics
-                    - Actionable recommendations
-                    
-                    ## 📊 Comparison Metrics Explained
-                    - **Semantic Similarity**: How similar in meaning (0-1 scale)
-                    - **Content Coverage**: How much existing content is covered (0-1 scale)
-                    - **Structural Similarity**: How similar the organization is (0-1 scale)
-                    - **ROUGE Scores**: Word/phrase overlap metrics
-                    - **Overall Quality Score**: Combined metric for alignment
                     
                     ## 📁 Repository Input Options
                     - **Local path**: `./my-project` or `/path/to/repo`
@@ -727,12 +683,6 @@ def create_interface():
                     - **GPT-4o-mini**: Cost-effective, good for simple docs
                     - **GPT-4.1-mini**: Enhanced capabilities
                     - **o4-mini**: Lightweight for basic documentation
-                    
-                    ## 🎯 Example Use Cases
-                    Try these repositories for demonstration:
-                    - `https://github.com/pallets/flask` (Python web framework)
-                    - `https://github.com/octocat/Hello-World` (Simple example)
-                    - Your own repositories (local or GitHub)
                     """
                     )
 
@@ -749,7 +699,6 @@ def create_interface():
                 api_docs_check,
                 tutorial_check,
                 architecture_check,
-                enable_comparison,
             ],
             outputs=[
                 init_status,
