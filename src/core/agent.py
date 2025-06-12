@@ -46,7 +46,7 @@ class AgentConfig:
     auto_cleanup: bool = True  # Whether to cleanup cloned repos automatically
 
     # Enhanced documentation settings
-    use_enhanced_generator: bool = True
+    use_enhanced_generator: bool = True  # Use enhanced generator with README embedding logic
     auto_discover_docs: bool = True
     docs_paths: List[str] = None
     exclude_patterns: List[str] = None
@@ -56,7 +56,7 @@ class AgentConfig:
 
     def __post_init__(self):
         if self.doc_types is None:
-            self.doc_types = ["overview", "installation", "usage", "api", "contributing"]
+            self.doc_types = ["readme", "api", "tutorial", "architecture"]
 
         if self.openai_api_key:
             os.environ["OPENAI_API_KEY"] = self.openai_api_key
@@ -383,105 +383,56 @@ class DocumentationAgent:
         self.logger.info("Enhanced documentation generation completed")
         return result
 
-    def run_enhanced_pipeline(
-        self, existing_docs_path: Optional[str] = None, output_file: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Run the enhanced documentation generation pipeline.
+    def run_enhanced_pipeline(self) -> Dict[str, Any]:
+        """Run the enhanced documentation generation pipeline with context awareness"""
 
-        Args:
-            existing_docs_path: Path to existing documentation (for discovery override)
-            output_file: File to save generated documentation
+        # Load existing documentation if enabled
+        if self.config.auto_discover_docs:
+            self._discover_and_load_documentation()
 
-        Returns:
-            Complete pipeline results
-        """
-        self.logger.info("Starting enhanced documentation pipeline")
+        # Generate documentation with context
+        generated_docs = self.enhanced_generator.generate_documentation_with_context(
+            repo_path=self.config.repo_path,
+            output_format="markdown",
+            doc_types=self.config.doc_types,
+            context_similarity_threshold=0.7,
+        )
 
-        import time
+        # Convert to format expected by the app (similar to standard pipeline)
+        return {
+            "documents": generated_docs,  # List of GeneratedDocument objects
+            "metadata": {
+                "total_documents": len(generated_docs),
+                "enhanced_with_embeddings": True,
+                "existing_docs_loaded": len(self.enhanced_generator.existing_docs) > 0,
+                "generation_method": "enhanced_with_context",
+            },
+        }
 
-        start_time = time.time()
+    def _discover_and_load_documentation(self):
+        """Discover and load existing documentation for the enhanced generator"""
+        if not self.enhanced_generator:
+            return
 
         try:
-            # Step 1: Analyze repository
-            self.analyze_repository()
+            # Auto-discover documentation paths
+            discovered_paths = self.auto_discover_documentation()
 
-            # Step 2: Auto-discover and load existing documentation
-            if self.config.auto_discover_docs:
-                discovered_paths = self.auto_discover_documentation()
-                if discovered_paths:
-                    self.config.docs_paths.extend(discovered_paths)
+            # Combine with manually configured paths
+            all_paths = (self.config.docs_paths or []) + discovered_paths
 
-            # Add manual path if provided
-            if existing_docs_path and os.path.exists(existing_docs_path):
-                self.config.docs_paths.append(existing_docs_path)
-
-            # Load existing documentation
-            self.load_existing_documentation()
-
-            # Step 3: Generate enhanced documentation
-            enhanced_result = self.generate_enhanced_documentation()
-
-            # Step 4: Compare with existing documentation (if enabled)
-            if self.config.include_comparison:
-                try:
-                    # For enhanced pipeline, we need to create GeneratedDocument objects for comparison
-                    from .generator import GeneratedDocument
-                    import json
-
-                    # Create temporary GeneratedDocument objects
-                    self.generated_docs = []
-                    for doc_type in enhanced_result["metadata"].get("doc_types", []):
-                        # Extract section for this doc_type from the combined documentation
-                        self.generated_docs.append(
-                            GeneratedDocument(
-                                title=f"{doc_type.title()} Documentation",
-                                content=enhanced_result["documentation"],  # Using full content for now
-                                doc_type=doc_type,
-                                metadata=enhanced_result["metadata"],
-                                word_count=len(enhanced_result["documentation"].split()),
-                            )
-                        )
-
-                    # Run comparison
-                    self.compare_with_existing(existing_docs_path)
-
-                except Exception as e:
-                    self.logger.warning(f"Comparison failed in enhanced pipeline: {e}")
-
-            # Step 5: Save documentation if output file provided
-            if output_file:
-                output_path = Path(output_file)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-
-                with open(output_path, "w", encoding="utf-8") as f:
-                    f.write(enhanced_result["documentation"])
-                self.logger.info(f"Enhanced documentation saved to: {output_path}")
-
-            # Step 6: Compile final results
-            execution_time = time.time() - start_time
-
-            final_result = {
-                "documentation": enhanced_result["documentation"],
-                "metadata": enhanced_result["metadata"],
-                "context": enhanced_result.get("context", {}),
-                "existing_docs_summary": self.docs_summary,
-                "execution_time": execution_time,
-                "config": {
-                    "repo_path": self.config.repo_path,
-                    "use_enhanced_generator": self.config.use_enhanced_generator,
-                    "existing_docs_loaded": self.existing_docs_loaded,
-                    "auto_discovered_docs": self.config.auto_discover_docs,
-                    "docs_paths": self.config.docs_paths,
-                },
-            }
-
-            self.logger.info(f"Enhanced pipeline completed successfully in {execution_time:.2f} seconds")
-            return final_result
+            if all_paths:
+                # Load documentation into the enhanced generator
+                success = self.enhanced_generator.load_existing_documentation(all_paths)
+                if success:
+                    self.logger.info(f"Loaded existing documentation from {len(all_paths)} paths")
+                else:
+                    self.logger.warning("Failed to load existing documentation")
+            else:
+                self.logger.info("No existing documentation paths found")
 
         except Exception as e:
-            self.logger.error(f"Enhanced pipeline execution failed: {str(e)}")
-            raise
+            self.logger.warning(f"Error discovering/loading documentation: {e}")
 
     def __del__(self):
         """Cleanup cloned repositories on object destruction"""

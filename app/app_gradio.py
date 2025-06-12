@@ -182,73 +182,126 @@ The agent uses an intelligent pipeline that reads and incorporates existing docu
             return "⚠️ Warning: Please initialize the agent first", "", gr.update(visible=False)
 
         try:
-            # Generate documentation with context-aware pipeline
-            print("🚀 Starting documentation generation pipeline...")
-            result = self.agent.run_enhanced_pipeline()
+            # Check if using enhanced generator or standard generator
+            if self.agent.config.use_enhanced_generator:
+                # Generate documentation with context-aware pipeline
+                print("🚀 Starting enhanced documentation generation pipeline...")
+                result = self.agent.run_enhanced_pipeline()
 
-            # Extract the generated documentation
-            documentation = result["documentation"]
-            metadata = result["metadata"]
-            context = result.get("context", {})
-            existing_docs_summary = result.get("existing_docs_summary", {})
+                # Extract the generated documents (now returns List[GeneratedDocument])
+                generated_docs = result["documents"]
+                metadata = result["metadata"]
 
-            # Format results for display
-            preview_content = f"""# 📚 Documentation Generated
+                # Format results for display
+                preview_content = f"""# 📚 Documentation Generated with README Enhancement
 
 ## 📊 Generation Summary
 - **Repository:** {metadata.get('repo_path', 'N/A')}
-- **Output Format:** {metadata.get('output_format', 'markdown')}
-- **Doc Types:** {', '.join(metadata.get('doc_types', []))}
-- **Existing Docs Found:** {metadata.get('existing_docs_count', 0)} chunks
-- **Execution Time:** {result.get('execution_time', 0):.2f} seconds
+- **Total Documents:** {metadata.get('total_documents', 0)}
+- **Enhanced with Embeddings:** {metadata.get('enhanced_with_embeddings', False)}
+- **Existing Docs Used:** {metadata.get('existing_docs_loaded', False)}
+- **Generation Method:** {metadata.get('generation_method', 'standard')}
 
-## 📚 Context Information
-{f"- **Total Existing Files:** {existing_docs_summary.get('total_files', 0)}" if existing_docs_summary else ""}
-{f"- **Total Chunks:** {existing_docs_summary.get('total_chunks', 0)}" if existing_docs_summary else ""}
-{f"- **Average Chunk Size:** {existing_docs_summary.get('avg_chunk_size', 0):.0f} characters" if existing_docs_summary else ""}
+## 📚 Generated Documents
 
-## 📝 Generated Documentation Preview
-{documentation[:2000]}{'...' if len(documentation) > 2000 else ''}
+"""
+
+                # Add each document to the preview
+                for doc in generated_docs:
+                    preview_content += f"### {doc.doc_type.title()} Documentation ({doc.word_count} words)\n"
+                    preview_content += f"{doc.content[:1000]}{'...' if len(doc.content) > 1000 else ''}\n\n---\n\n"
+
+                preview_content += """
+## ✅ Features Used:
+- ✅ **Code Analysis:** Repository structure and dependencies analyzed
+- ✅ **README Embeddings:** Existing documentation vectorized and used for context
+- ✅ **Context Integration:** Existing documentation patterns incorporated
+- ✅ **Multi-Document Generation:** Separate documents for each type
+- ✅ **Enhanced Prompts:** LLM prompts enriched with README content
+"""
+
+                # Create temporary files for download
+                file_outputs = []
+
+                # Save each document as a separate file
+                for doc in generated_docs:
+                    doc_path = os.path.join(self.temp_dir, f"{doc.doc_type}_documentation.md")
+                    with open(doc_path, "w", encoding="utf-8") as f:
+                        f.write(f"# {doc.title}\n\n{doc.content}")
+                    file_outputs.append(doc_path)
+
+                # Save metadata
+                metadata_path = os.path.join(self.temp_dir, "generation_metadata.json")
+                with open(metadata_path, "w", encoding="utf-8") as f:
+                    import json
+
+                    json.dump(
+                        {
+                            "metadata": metadata,
+                            "documents": [
+                                {
+                                    "title": doc.title,
+                                    "doc_type": doc.doc_type,
+                                    "word_count": doc.word_count,
+                                    "metadata": doc.metadata,
+                                }
+                                for doc in generated_docs
+                            ],
+                        },
+                        f,
+                        indent=2,
+                    )
+                file_outputs.append(metadata_path)
+
+                # Store the results for comparison
+                self.result = result
+                self.generated_docs = generated_docs  # Store list of GeneratedDocument objects
+
+            else:
+                # Use standard pipeline that generates multiple documents
+                print("🚀 Starting standard documentation generation pipeline...")
+
+                # First analyze if not already done
+                if not hasattr(self.agent, "repository_metadata") or not self.agent.repository_metadata:
+                    self.repo_metadata, self.modules = self.agent.analyze_repository()
+
+                # Generate multiple documents
+                self.generated_docs = self.agent.generate_documentation()
+
+                # Format generated documents for display
+                doc_outputs = []
+                preview_content = "# 📚 Generated Documentation\n\n"
+
+                for doc in self.generated_docs:
+                    preview_content += f"""
+## {doc.doc_type.title()} Documentation
+**Word count:** {doc.word_count}
+
+### Content Preview:
+{doc.content[:1500]}{'...' if len(doc.content) > 1500 else ''}
 
 ---
 
-## ✅ Features Used:
-- ✅ **Code Analysis:** Repository structure and dependencies analyzed
-- ✅ **Documentation Discovery:** Existing README/docs automatically discovered  
-- ✅ **Context Integration:** Existing documentation patterns incorporated
-- ✅ **Context-Aware Generation:** LLM prompts enriched with existing content
-- ✅ **Quality Assessment:** Generated content compared with existing patterns
 """
+                    doc_outputs.append((f"{doc.doc_type}_documentation.md", doc.content))
 
-            # Create temporary files for download
-            file_outputs = []
+                # Create temporary files for download
+                file_outputs = []
+                for filename, content in doc_outputs:
+                    temp_path = os.path.join(self.temp_dir, filename)
+                    with open(temp_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    file_outputs.append(temp_path)
 
-            # Save the main documentation
-            main_doc_path = os.path.join(self.temp_dir, "documentation.md")
-            with open(main_doc_path, "w", encoding="utf-8") as f:
-                f.write(documentation)
-            file_outputs.append(main_doc_path)
-
-            # Save metadata and context info
-            metadata_path = os.path.join(self.temp_dir, "generation_metadata.json")
-            with open(metadata_path, "w", encoding="utf-8") as f:
-                import json
-
-                json.dump(
-                    {
-                        "metadata": metadata,
-                        "context_summary": context,
-                        "existing_docs_summary": existing_docs_summary,
-                        "execution_time": result.get("execution_time", 0),
+                # Store results for compatibility
+                self.result = {
+                    "documentation": preview_content,
+                    "metadata": {
+                        "repo_path": self.agent.config.repo_path,
+                        "doc_types": [doc.doc_type for doc in self.generated_docs],
+                        "documents_count": len(self.generated_docs),
                     },
-                    f,
-                    indent=2,
-                )
-            file_outputs.append(metadata_path)
-
-            # Store the results for comparison
-            self.result = result
-            self.generated_docs = documentation  # For compatibility
+                }
 
             return (
                 "✅ Documentation generated successfully!",

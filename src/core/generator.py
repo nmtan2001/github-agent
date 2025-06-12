@@ -12,22 +12,19 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 import json
 
-from langchain_community.llms import OpenAI
-from langchain_openai import ChatOpenAI
-from langchain.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-
-from langchain.schema import BaseOutputParser
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_community.document_loaders import TextLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langgraph.graph import Graph, StateGraph, END
-from langgraph.graph.message import add_messages
-from typing_extensions import Annotated, TypedDict
+from langgraph.graph import StateGraph, END
+from typing_extensions import TypedDict
 
 from .analyzer import RepositoryMetadata, ModuleInfo, FunctionInfo, ClassInfo, CodeAnalyzer
 from .document_reader import DocumentReader, DocumentChunk
+from .summarizer import ContentSummarizer, SummarizationConfig
 from ..utils.templates import TemplateManager
 from ..utils.llm import LLMManager
 
@@ -188,10 +185,16 @@ class LLMDocumentationChain:
 
     def __init__(self, config: DocumentationConfig):
         self.config = config
-        self.llm = ChatOpenAI(model=config.model_name, temperature=config.temperature, max_tokens=config.max_tokens)
+        # Updated to use latest OpenAI syntax
+        self.llm = ChatOpenAI(
+            model=config.model_name,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            api_key=os.getenv("OPENAI_API_KEY"),  # Explicit API key handling
+        )
 
-        # Initialize embeddings for context retrieval
-        self.embeddings = OpenAIEmbeddings()
+        # Initialize embeddings for context retrieval with explicit API key
+        self.embeddings = OpenAIEmbeddings(api_key=os.getenv("OPENAI_API_KEY"))
         self.knowledge_base = None
 
         # Create documentation generation graph
@@ -367,9 +370,6 @@ class LLMDocumentationChain:
             """,
         )
 
-        # Use new LangChain syntax: prompt | llm
-        chain = prompt | self.llm
-
         # Build detailed module information
         module_details = []
         key_classes = []
@@ -402,15 +402,23 @@ class LLMDocumentationChain:
 
             module_details.append(module_detail)
 
-        result = chain.invoke(
-            {
-                "repo_name": state["code_analysis"].name,
-                "total_modules": len(core_modules),
-                "core_modules": "\n".join(module_details),
-                "key_classes": ", ".join(key_classes[:20]),  # Limit to avoid token overflow
-                "key_functions": ", ".join(key_functions[:30]),
-            }
+        # Use latest LangChain syntax with direct invocation
+        formatted_prompt = prompt.format(
+            repo_name=state["code_analysis"].name,
+            total_modules=len(core_modules),
+            core_modules="\n".join(module_details),
+            key_classes=", ".join(key_classes[:20]),  # Limit to avoid token overflow
+            key_functions=", ".join(key_functions[:30]),
         )
+
+        messages = [
+            SystemMessage(
+                content="You are a technical documentation expert. Generate comprehensive, accurate, and well-structured API documentation."
+            ),
+            HumanMessage(content=formatted_prompt),
+        ]
+
+        result = self.llm.invoke(messages)
         return result.content if hasattr(result, "content") else str(result)
 
     def _generate_readme_section(self, state) -> str:
@@ -472,9 +480,6 @@ class LLMDocumentationChain:
             """,
         )
 
-        # Use new LangChain syntax: prompt | llm
-        chain = prompt | self.llm
-
         # Extract meaningful information
         main_modules_info = []
         for module in main_modules[:3]:
@@ -505,18 +510,26 @@ class LLMDocumentationChain:
         if example_modules:
             key_features.append("Rich examples and tutorials")
 
-        result = chain.invoke(
-            {
-                "repo_name": repo_name,
-                "description": description[:200] + "..." if len(description) > 200 else description,
-                "language": state["code_analysis"].language,
-                "module_count": len(state["modules"]),
-                "dependencies": ", ".join(deps[:10]),
-                "main_modules": ", ".join(main_modules_info) if main_modules_info else "No main modules detected",
-                "example_modules": ", ".join(example_modules_info) if example_modules_info else "No examples detected",
-                "key_features": ", ".join(key_features) if key_features else "General Python SDK",
-            }
+        # Use latest LangChain syntax with direct invocation
+        formatted_prompt = prompt.format(
+            repo_name=repo_name,
+            description=description[:200] + "..." if len(description) > 200 else description,
+            language=state["code_analysis"].language,
+            module_count=len(state["modules"]),
+            dependencies=", ".join(deps[:10]),
+            main_modules=", ".join(main_modules_info) if main_modules_info else "No main modules detected",
+            example_modules=", ".join(example_modules_info) if example_modules_info else "No examples detected",
+            key_features=", ".join(key_features) if key_features else "General Python SDK",
         )
+
+        messages = [
+            SystemMessage(
+                content="You are a technical documentation expert. Generate comprehensive, professional README documentation."
+            ),
+            HumanMessage(content=formatted_prompt),
+        ]
+
+        result = self.llm.invoke(messages)
         return result.content if hasattr(result, "content") else str(result)
 
     def _generate_tutorial_section(self, state) -> str:
@@ -542,9 +555,6 @@ class LLMDocumentationChain:
             """,
         )
 
-        # Use new LangChain syntax: prompt | llm
-        chain = prompt | self.llm
-
         project_context = f"""
         Project: {state['code_analysis'].name}
         Purpose: {state['code_analysis'].description}
@@ -553,7 +563,17 @@ class LLMDocumentationChain:
 
         entry_points = ", ".join(state["code_analysis"].entry_points)
 
-        result = chain.invoke({"project_context": project_context, "entry_points": entry_points})
+        # Use latest LangChain syntax with direct invocation
+        formatted_prompt = prompt.format(project_context=project_context, entry_points=entry_points)
+
+        messages = [
+            SystemMessage(
+                content="You are a technical documentation expert. Generate comprehensive, beginner-friendly tutorial documentation."
+            ),
+            HumanMessage(content=formatted_prompt),
+        ]
+
+        result = self.llm.invoke(messages)
         return result.content if hasattr(result, "content") else str(result)
 
     def _generate_architecture_section(self, state) -> str:
@@ -581,9 +601,6 @@ class LLMDocumentationChain:
             """,
         )
 
-        # Use new LangChain syntax: prompt | llm
-        chain = prompt | self.llm
-
         system_info = f"""
         Name: {state['code_analysis'].name}
         Size: {state['code_analysis'].size} bytes
@@ -594,9 +611,19 @@ class LLMDocumentationChain:
         dependencies = ", ".join(state["code_analysis"].dependencies)
         modules_structure = self._create_module_structure_text(state["modules"])
 
-        result = chain.invoke(
-            {"system_info": system_info, "dependencies": dependencies, "modules_structure": modules_structure}
+        # Use latest LangChain syntax with direct invocation
+        formatted_prompt = prompt.format(
+            system_info=system_info, dependencies=dependencies, modules_structure=modules_structure
         )
+
+        messages = [
+            SystemMessage(
+                content="You are a technical documentation expert. Generate comprehensive, detailed architecture documentation."
+            ),
+            HumanMessage(content=formatted_prompt),
+        ]
+
+        result = self.llm.invoke(messages)
         return result.content if hasattr(result, "content") else str(result)
 
     def _generate_generic_section(self, state) -> str:
@@ -616,11 +643,19 @@ class LLMDocumentationChain:
             """,
         )
 
-        # Use new LangChain syntax: prompt | llm
-        chain = prompt | self.llm
         context = "\n".join(state["context_chunks"])
 
-        result = chain.invoke({"code_context": context})
+        # Use latest LangChain syntax with direct invocation
+        formatted_prompt = prompt.format(code_context=context)
+
+        messages = [
+            SystemMessage(
+                content="You are a technical documentation expert. Generate comprehensive, well-structured documentation."
+            ),
+            HumanMessage(content=formatted_prompt),
+        ]
+
+        result = self.llm.invoke(messages)
         return result.content if hasattr(result, "content") else str(result)
 
     def _format_modules_for_prompt(self, modules: List[ModuleInfo]) -> str:
@@ -770,8 +805,6 @@ class DocumentationGenerator:
             """,
         )
 
-        chain = prompt | self.llm_chain.llm | StrOutputParser()
-
         # Format functions
         functions_text = ""
         for func in module.functions:
@@ -792,21 +825,30 @@ class DocumentationGenerator:
                 cls_text += f"\n  {cls.docstring}"
             classes_text += cls_text + "\n"
 
-        result = chain.invoke(
-            {
-                "module_name": module.name,
-                "module_content": module.docstring or "No description available",
-                "functions": functions_text,
-                "classes": classes_text,
-            }
+        # Use latest LangChain syntax with direct invocation
+        formatted_prompt = prompt.format(
+            module_name=module.name,
+            module_content=module.docstring or "No description available",
+            functions=functions_text,
+            classes=classes_text,
         )
+
+        messages = [
+            SystemMessage(
+                content="You are a technical documentation expert. Generate comprehensive module documentation."
+            ),
+            HumanMessage(content=formatted_prompt),
+        ]
+
+        result = self.llm_chain.llm.invoke(messages)
+        result_content = result.content if hasattr(result, "content") else str(result)
 
         return GeneratedDocument(
             title=f"Module: {module.name}",
-            content=result,
+            content=result_content,
             doc_type="module",
             metadata={"module_path": module.path},
-            word_count=len(result.split()),
+            word_count=len(result_content.split()),
         )
 
     def generate_function_doc(self, function: FunctionInfo) -> str:
@@ -833,18 +875,23 @@ class DocumentationGenerator:
             """,
         )
 
-        chain = prompt | self.llm_chain.llm | StrOutputParser()
-
-        result = chain.invoke(
-            {
-                "func_name": function.name,
-                "parameters": ", ".join(function.parameters),
-                "docstring": function.docstring or "No docstring available",
-                "complexity": function.complexity,
-            }
+        # Use latest LangChain syntax with direct invocation
+        formatted_prompt = prompt.format(
+            func_name=function.name,
+            parameters=", ".join(function.parameters),
+            docstring=function.docstring or "No docstring available",
+            complexity=function.complexity,
         )
 
-        return result
+        messages = [
+            SystemMessage(
+                content="You are a technical documentation expert. Generate comprehensive function documentation."
+            ),
+            HumanMessage(content=formatted_prompt),
+        ]
+
+        result = self.llm_chain.llm.invoke(messages)
+        return result.content if hasattr(result, "content") else str(result)
 
     def enhance_existing_documentation(self, existing_doc: str, code_context: str) -> str:
         """Enhance existing documentation with additional context"""
@@ -871,11 +918,18 @@ class DocumentationGenerator:
             """,
         )
 
-        chain = prompt | self.llm_chain.llm | StrOutputParser()
+        # Use latest LangChain syntax with direct invocation
+        formatted_prompt = prompt.format(existing_doc=existing_doc, code_context=code_context)
 
-        result = chain.invoke({"existing_doc": existing_doc, "code_context": code_context})
+        messages = [
+            SystemMessage(
+                content="You are a technical documentation expert. Enhance existing documentation with code insights."
+            ),
+            HumanMessage(content=formatted_prompt),
+        ]
 
-        return result
+        result = self.llm_chain.llm.invoke(messages)
+        return result.content if hasattr(result, "content") else str(result)
 
 
 @dataclass
@@ -900,11 +954,13 @@ class EnhancedDocumentationGenerator:
         template_manager: Optional[TemplateManager] = None,
         chunk_size: int = 1000,
         chunk_overlap: int = 200,
+        summarization_config: Optional[SummarizationConfig] = None,
     ):
         """Initialize the enhanced documentation generator."""
         self.llm_manager = llm_manager or LLMManager()
         self.template_manager = template_manager or TemplateManager()
         self.document_reader = DocumentReader(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        self.summarizer = ContentSummarizer(summarization_config)
         self.vector_index = None
         self.existing_docs = []
 
@@ -989,9 +1045,9 @@ class EnhancedDocumentationGenerator:
         output_format: str = "markdown",
         doc_types: Optional[List[str]] = None,
         context_similarity_threshold: float = 0.7,
-    ) -> Dict[str, Any]:
+    ) -> List[GeneratedDocument]:
         """
-        Generate documentation using both code analysis and existing documentation context.
+        Generate multiple separate documentation documents using both code analysis and existing documentation context.
 
         Args:
             repo_path: Path to the repository
@@ -1000,7 +1056,7 @@ class EnhancedDocumentationGenerator:
             context_similarity_threshold: Threshold for including similar existing content
 
         Returns:
-            Generated documentation with context information
+            List of separate GeneratedDocument objects (like standard generator)
         """
         try:
             logger.info(f"Generating documentation with context for: {repo_path}")
@@ -1028,29 +1084,38 @@ class EnhancedDocumentationGenerator:
             # 2. Prepare documentation context
             context = self._prepare_documentation_context(code_analysis, context_similarity_threshold)
 
-            # 3. Generate documentation sections
-            doc_types = doc_types or ["overview", "installation", "usage", "api", "contributing"]
-            generated_docs = {}
+            # 3. Generate separate documentation documents (like standard generator)
+            doc_types = doc_types or ["readme", "api", "tutorial", "architecture"]  # Use standard doc types
+            generated_docs = []
 
             for doc_type in doc_types:
-                logger.info(f"Generating {doc_type} documentation...")
-                section = self._generate_section_with_context(doc_type, context, output_format)
-                generated_docs[doc_type] = section
+                logger.info(f"Generating {doc_type} documentation with README enhancement...")
 
-            # 4. Compile final documentation
-            final_doc = self._compile_documentation(generated_docs, context, output_format)
+                # Generate section content with context
+                section_content = self._generate_section_with_context(doc_type, context, output_format)
 
-            return {
-                "documentation": final_doc,
-                "context": asdict(context),
-                "metadata": {
-                    "repo_path": repo_path,
-                    "output_format": output_format,
-                    "doc_types": doc_types,
-                    "existing_docs_count": len(context.existing_docs),
-                    "code_analysis_summary": self._summarize_code_analysis(code_analysis),
-                },
-            }
+                # Create GeneratedDocument object (like standard generator)
+                doc = GeneratedDocument(
+                    title=f"{repository_metadata.name} - {doc_type.title()} Documentation",
+                    content=section_content,
+                    doc_type=doc_type,
+                    metadata={
+                        "repository": repository_metadata.name,
+                        "language": repository_metadata.language,
+                        "generation_model": self.llm_manager.config.model,
+                        "modules_count": len(modules),
+                        "existing_docs_count": len(context.existing_docs),
+                        "enhanced_with_embeddings": True,  # Mark as enhanced
+                        "context_used": bool(context.existing_docs),
+                    },
+                    word_count=len(section_content.split()),
+                )
+
+                generated_docs.append(doc)
+                logger.info(f"Generated {doc_type} documentation with embedding enhancement ({doc.word_count} words)")
+
+            logger.info(f"Completed generation of {len(generated_docs)} enhanced documents with README embeddings")
+            return generated_docs
 
         except Exception as e:
             logger.error(f"Error generating documentation with context: {e}")
@@ -1179,11 +1244,12 @@ Project Information:
             existing_context = "\nExisting Documentation Context:\n"
             for i, content in enumerate(relevant_content, 1):
                 source = content["metadata"].get("file_name", "unknown file")
-                # Limit existing content to prevent overflow
-                content_preview = (
-                    content["content"][:300] + "..." if len(content["content"]) > 300 else content["content"]
-                )
-                existing_context += f"\n{i}. From {source}:\n{content_preview}\n"
+                # Use summarizer instead of truncation for better context preservation
+                if self.summarizer.should_summarize(content["content"]):
+                    content_summary = self.summarizer.summarize_existing_documentation(content["content"], doc_type)
+                    existing_context += f"\n{i}. From {source} (summarized):\n{content_summary}\n"
+                else:
+                    existing_context += f"\n{i}. From {source}:\n{content['content']}\n"
 
         prompt = f"""
 You are a technical documentation expert. Generate comprehensive {doc_type} documentation 
