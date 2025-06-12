@@ -7,6 +7,9 @@ the entire documentation generation and comparison process.
 
 import os
 import json
+import re
+import tempfile
+import shutil
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -15,6 +18,13 @@ import logging
 from .analyzer import CodeAnalyzer, RepositoryMetadata, ModuleInfo
 from .generator import DocumentationGenerator, DocumentationConfig, GeneratedDocument
 from .comparator import DocumentationComparator, ComparisonResult
+
+try:
+    from git import Repo
+
+    GIT_AVAILABLE = True
+except ImportError:
+    GIT_AVAILABLE = False
 
 
 @dataclass
@@ -30,6 +40,7 @@ class AgentConfig:
     doc_types: List[str] = None
     include_comparison: bool = True
     save_intermediate: bool = True
+    auto_cleanup: bool = True  # Whether to cleanup cloned repos automatically
 
     def __post_init__(self):
         if self.doc_types is None:
@@ -37,6 +48,40 @@ class AgentConfig:
 
         if self.openai_api_key:
             os.environ["OPENAI_API_KEY"] = self.openai_api_key
+
+    @staticmethod
+    def is_github_url(path: str) -> bool:
+        """Check if the provided path is a GitHub URL"""
+        github_patterns = [
+            r"^https://github\.com/[\w\-_]+/[\w\-_]+/?$",
+            r"^https://github\.com/[\w\-_]+/[\w\-_]+\.git/?$",
+            r"^git@github\.com:[\w\-_]+/[\w\-_]+\.git$",
+            r"^github\.com/[\w\-_]+/[\w\-_]+/?$",
+        ]
+        return any(re.match(pattern, path.strip()) for pattern in github_patterns)
+
+    @staticmethod
+    def normalize_github_url(url: str) -> str:
+        """Normalize GitHub URL to HTTPS format"""
+        url = url.strip()
+
+        # Handle SSH format
+        if url.startswith("git@github.com:"):
+            url = url.replace("git@github.com:", "https://github.com/")
+
+        # Add https:// if missing
+        if url.startswith("github.com/"):
+            url = "https://" + url
+
+        # Remove .git suffix if present
+        if url.endswith(".git"):
+            url = url[:-4]
+
+        # Remove trailing slash
+        if url.endswith("/"):
+            url = url[:-1]
+
+        return url
 
 
 @dataclass
@@ -57,6 +102,7 @@ class DocumentationAgent:
 
     def __init__(self, config: AgentConfig):
         self.config = config
+        self._cloned_repo_path = None  # Track if we cloned a repo for cleanup
 
         # Create output directory first (needed for logging)
         self.output_path = Path(config.output_dir)
@@ -64,8 +110,11 @@ class DocumentationAgent:
 
         self.logger = self._setup_logging()
 
+        # Handle GitHub URL automatic cloning
+        actual_repo_path = self._handle_repo_path(config.repo_path)
+
         # Initialize components
-        self.analyzer = CodeAnalyzer(config.repo_path)
+        self.analyzer = CodeAnalyzer(actual_repo_path)
         self.generator = DocumentationGenerator(
             DocumentationConfig(
                 model_name=config.model_name,
@@ -107,6 +156,63 @@ class DocumentationAgent:
             logger.addHandler(file_handler)
 
         return logger
+
+    def _handle_repo_path(self, repo_path: str) -> str:
+        """Handle repository path - clone if it's a GitHub URL, otherwise return as-is"""
+        if AgentConfig.is_github_url(repo_path):
+            return self._clone_github_repo(repo_path)
+        else:
+            return repo_path
+
+    def _clone_github_repo(self, github_url: str) -> str:
+        """Clone a GitHub repository to a temporary directory"""
+        if not GIT_AVAILABLE:
+            raise RuntimeError(
+                "GitPython is required for automatic cloning. Please install it with: pip install gitpython"
+            )
+
+        try:
+            # Normalize the URL
+            normalized_url = AgentConfig.normalize_github_url(github_url)
+
+            # Extract repository name for the local directory
+            repo_name = normalized_url.split("/")[-1]
+
+            # Create a temporary directory in the output directory
+            clone_dir = self.output_path / "cloned_repos" / repo_name
+            clone_dir.parent.mkdir(parents=True, exist_ok=True)
+
+            # Remove existing directory if it exists
+            if clone_dir.exists():
+                shutil.rmtree(clone_dir)
+
+            self.logger.info(f"Cloning repository from {normalized_url} to {clone_dir}")
+
+            # Clone the repository
+            repo = Repo.clone_from(normalized_url, clone_dir)
+
+            # Store the cloned path for cleanup
+            self._cloned_repo_path = str(clone_dir)
+
+            self.logger.info(f"Successfully cloned repository to {clone_dir}")
+            return str(clone_dir)
+
+        except Exception as e:
+            self.logger.error(f"Failed to clone repository {github_url}: {str(e)}")
+            raise RuntimeError(f"Failed to clone repository: {str(e)}")
+
+    def __del__(self):
+        """Cleanup cloned repositories on object destruction"""
+        self._cleanup_cloned_repo()
+
+    def _cleanup_cloned_repo(self):
+        """Clean up cloned repository if auto_cleanup is enabled"""
+        if self._cloned_repo_path and self.config.auto_cleanup and Path(self._cloned_repo_path).exists():
+            try:
+                shutil.rmtree(self._cloned_repo_path)
+                self.logger.info(f"Cleaned up cloned repository: {self._cloned_repo_path}")
+            except Exception as e:
+                self.logger.warning(f"Failed to cleanup cloned repository {self._cloned_repo_path}: {e}")
 
     def analyze_repository(self) -> Tuple[RepositoryMetadata, List[ModuleInfo]]:
         """Analyze the repository structure and extract metadata"""

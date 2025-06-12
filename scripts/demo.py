@@ -42,14 +42,27 @@ def demo_repository_analysis():
     """Demonstrate repository analysis"""
     print_section("REPOSITORY ANALYSIS")
 
-    # Check if repository exists
+    # Repository path - can be local path or GitHub URL
     repo_path = "python-sdk"  # Use relative path like the working test script
-    if not Path(repo_path).exists():
-        print(f"❌ Repository not found: {repo_path}")
-        print("Please ensure the python-sdk directory is in the current location.")
-        return None, None
 
-    print(f"✅ Found repository: {repo_path}")
+    # Alternative examples using GitHub URLs (comment/uncomment to test):
+    # repo_path = "https://github.com/octocat/Hello-World"
+    # repo_path = "https://github.com/pallets/flask.git"
+    # repo_path = "git@github.com:user/repository.git"
+
+    # Check if it's a GitHub URL or local path
+    from src.core.agent import AgentConfig
+
+    if AgentConfig.is_github_url(repo_path):
+        print(f"🌐 Using GitHub repository: {repo_path}")
+        print("Repository will be cloned automatically...")
+    else:
+        if not Path(repo_path).exists():
+            print(f"❌ Repository not found: {repo_path}")
+            print("Please ensure the python-sdk directory is in the current location.")
+            print("Or try using a GitHub URL like: https://github.com/octocat/Hello-World")
+            return None, None
+        print(f"✅ Found local repository: {repo_path}")
 
     # Configure agent
     config = AgentConfig(
