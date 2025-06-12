@@ -13,7 +13,7 @@ from pathlib import Path
 import json
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_community.document_loaders import TextLoader
@@ -660,6 +660,10 @@ class LLMDocumentationChain:
             ),
             HumanMessage(content=formatted_prompt),
         ]
+
+        print("-----PROMPT FOR README-----")
+        print(formatted_prompt)
+        print("--------------------------")
 
         result = self.llm.invoke(messages)
         return result.content if hasattr(result, "content") else str(result)
@@ -1599,112 +1603,42 @@ class EnhancedDocumentationGenerator:
         # Get relevant existing content for this section
         relevant_content = self._get_relevant_content_for_section(doc_type, context)
 
-        # Create a temporary LLMDocumentationChain to use its detailed prompts
-        # (Already imported at top of file)
+        # Build a context-aware prompt
+        prompt = self._build_context_aware_prompt(doc_type, context.code_analysis, relevant_content, output_format)
 
-        config = DocumentationConfig(
-            model_name=self.llm_manager.config.model,
-            max_tokens=None,  # No token limit for comprehensive docs
-            temperature=0.3,
-        )
-        llm_chain = LLMDocumentationChain(config)
+        # Print the prompt for debugging
+        print(f"-----PROMPT FOR {doc_type}-----")
+        print(prompt)
+        print("--------------------------")
 
-        # Create a state object similar to what the LLMDocumentationChain expects
-        # Convert code_analysis dict back to RepositoryMetadata-like structure
-        from .analyzer import RepositoryMetadata, ModuleInfo, FunctionInfo, ClassInfo
-
-        # Create RepositoryMetadata from dict
-        repo_metadata = RepositoryMetadata(
-            name=context.code_analysis.get("name", "Unknown"),
-            description=context.code_analysis.get("description", ""),
-            language=context.code_analysis.get("language", "Python"),
-            size=context.code_analysis.get("size", 0),
-            file_count=context.code_analysis.get("file_count", 0),
-            dependencies=context.code_analysis.get("dependencies", []),
-            entry_points=context.code_analysis.get("entry_points", []),
-            test_coverage=context.code_analysis.get("test_coverage", 0.0),
-            complexity_score=context.code_analysis.get("complexity_score", 0.0),
-        )
-
-        # Create ModuleInfo objects from dict
-        modules = []
-        for module_dict in context.code_analysis.get("modules", [])[:10]:  # Limit to avoid context overflow
-            # Create functions
-            functions = []
-            for func_dict in module_dict.get("functions", []):
-                func = FunctionInfo(
-                    name=func_dict.get("name", ""),
-                    file_path=func_dict.get("file_path", module_dict.get("path", "")),
-                    line_start=func_dict.get("line_start", 1),
-                    line_end=func_dict.get("line_end", 1),
-                    docstring=func_dict.get("docstring", ""),
-                    parameters=func_dict.get("parameters", []),
-                    return_type=func_dict.get("return_type", ""),
-                    complexity=func_dict.get("complexity", 0),
-                    is_async=func_dict.get("is_async", False),
-                )
-                functions.append(func)
-
-            # Create classes
-            classes = []
-            for class_dict in module_dict.get("classes", []):
-                cls = ClassInfo(
-                    name=class_dict.get("name", ""),
-                    file_path=class_dict.get("file_path", module_dict.get("path", "")),
-                    line_start=class_dict.get("line_start", 1),
-                    line_end=class_dict.get("line_end", 1),
-                    docstring=class_dict.get("docstring", ""),
-                    methods=[],  # Simplified for now
-                    attributes=class_dict.get("attributes", []),
-                    inheritance=class_dict.get("inheritance", []),
-                )
-                classes.append(cls)
-
-            # Create module
-            module = ModuleInfo(
-                name=module_dict.get("name", ""),
-                path=module_dict.get("path", ""),
-                docstring=module_dict.get("docstring", ""),
-                imports=module_dict.get("imports", []),
-                functions=functions,
-                classes=classes,
-                constants=module_dict.get("constants", []),
-                language=module_dict.get("language", "python"),
-                lines_of_code=module_dict.get("lines_of_code", 0),
-                complexity_score=module_dict.get("complexity_score", 0.0),
-            )
-            modules.append(module)
-
-        # Create state for the detailed prompt methods
-        state = {
-            "code_analysis": repo_metadata,
-            "modules": modules,
-            "current_doc_type": doc_type,
-            "generated_sections": {},
-            "context_chunks": [],
-            "final_document": "",
-        }
-
-        # Use the detailed prompt methods from LLMDocumentationChain
+        # Generate the documentation section using the context-aware prompt
         try:
-            if doc_type == "api":
-                return llm_chain._generate_api_section(state)
-            elif doc_type == "readme":
-                return llm_chain._generate_readme_section(state)
-            elif doc_type == "tutorial":
-                return llm_chain._generate_tutorial_section(state)
-            elif doc_type == "architecture":
-                return llm_chain._generate_architecture_section(state)
-            elif doc_type == "comprehensive":
-                return llm_chain._generate_comprehensive_section(state)
-            else:
-                return llm_chain._generate_generic_section(state)
+            from langchain_openai import ChatOpenAI
+            from langchain_core.prompts import ChatPromptTemplate
+            from langchain_core.output_parsers import StrOutputParser
+
+            llm = ChatOpenAI(
+                model=self.llm_manager.config.model,
+                temperature=0.3,
+                max_tokens=None,
+                api_key=os.getenv("OPENAI_API_KEY"),
+            )
+
+            prompt_template = ChatPromptTemplate.from_template("{prompt}")
+
+            chain = prompt_template | llm | StrOutputParser()
+
+            return chain.invoke({"prompt": prompt})
         except Exception as e:
-            logger.error(f"Error generating {doc_type} section: {e}")
-            return f"Error generating {doc_type} section: {str(e)}"
+            logger.error(f"Error during LLM invocation: {e}")
+            return f"Error generating documentation: {e}"
 
     def _get_relevant_content_for_section(self, doc_type: str, context: DocumentationContext) -> List[Dict[str, Any]]:
         """Get existing content relevant to a specific documentation section."""
+
+        if doc_type == "comprehensive":
+            # For comprehensive docs, include all similar content found.
+            return context.similar_content
 
         # Define keywords for different section types
         section_keywords = {

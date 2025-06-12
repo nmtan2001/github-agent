@@ -462,7 +462,7 @@ Key differences:
     def compare_multiple_documents(
         self, generated_docs: List[Tuple[str, str]], existing_docs: List[Tuple[str, str]]
     ) -> Dict[str, ComparisonResult]:
-        """Compare multiple document pairs, with special handling for 'comprehensive' docs."""
+        """Compare multiple document pairs"""
 
         results = {}
         existing_dict = {doc_type: content for doc_type, content in existing_docs}
