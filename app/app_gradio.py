@@ -388,20 +388,11 @@ The agent could not find an existing README.md to compare against. The generated
 - **ROUGE-2 Score:** {result.metrics.rouge_scores.get('rouge2', 0):.3f}
 - **ROUGE-L Score:** {result.metrics.rouge_scores.get('rougeL', 0):.3f}
 - **Word Count Ratio:** {result.metrics.word_count_ratio:.3f}
-### 📋 Analysis Summary
-{result.detailed_analysis.get('summary', 'No summary available')}
-### 💡 Top Recommendations
 """
-            for i, rec in enumerate(result.recommendations[:3], 1):
-                comparison_content += f"{i}. {rec}\n"
-            if result.missing_sections:
-                comparison_content += f"### ❌ Missing Sections\n`{', '.join(result.missing_sections)}`\n"
-            if result.additional_sections:
-                comparison_content += f"### ✅ New Sections\n`{', '.join(result.additional_sections)}`\n"
-
-            comparison_file = os.path.join(self.temp_dir, "readme_comparison_results.json")
-            with open(comparison_file, "w", encoding="utf-8") as f:
-                json.dump({k: asdict(v) for k, v in comparison_results.items()}, f, indent=2)
+            if result.metrics.ragas_relevancy is not None:
+                comparison_content += f"- **Ragas Answer Relevancy:** {result.metrics.ragas_relevancy:.3f}\n"
+            if result.metrics.ragas_correctness is not None:
+                comparison_content += f"- **Ragas Answer Correctness:** {result.metrics.ragas_correctness:.3f}\n"
 
             return comparison_content, gr.update(visible=True)
 

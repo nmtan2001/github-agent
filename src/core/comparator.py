@@ -20,6 +20,13 @@ from nltk.corpus import stopwords
 from rouge_score import rouge_scorer
 import bert_score
 
+from datasets import Dataset
+from ragas import evaluate
+from ragas.metrics import answer_relevancy, answer_correctness
+from ragas.llms import LangchainLLMWrapper
+from langchain_openai import ChatOpenAI
+import os
+
 
 @dataclass
 class ComparisonMetrics:
@@ -33,6 +40,8 @@ class ComparisonMetrics:
     readability_score: float
     word_count_ratio: float
     section_coverage: float
+    ragas_relevancy: Optional[float] = None
+    ragas_correctness: Optional[float] = None
 
 
 @dataclass
@@ -50,12 +59,17 @@ class ComparisonResult:
 class DocumentationComparator:
     """Advanced documentation comparison using multiple similarity metrics"""
 
-    def __init__(self):
+    def __init__(self, model_name: str = "gpt-4o-mini", api_key: Optional[str] = None):
         # Initialize sentence transformer for semantic similarity
         self.sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
 
         # Initialize ROUGE scorer
         self.rouge_scorer = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
+
+        self.ragas_llm = None
+        used_api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if used_api_key:
+            self.ragas_llm = LangchainLLMWrapper(ChatOpenAI(model=model_name, api_key=used_api_key))
 
         # Download required NLTK data
         try:
@@ -83,6 +97,15 @@ class DocumentationComparator:
         word_count_ratio = self._calculate_word_count_ratio(generated_doc, existing_doc)
         section_coverage = self._calculate_section_coverage(generated_doc, existing_doc)
 
+        # Ragas evaluation
+        ragas_scores = self.evaluate_with_ragas(
+            generated_doc=generated_doc,
+            existing_doc=existing_doc,
+            question="Provide a comprehensive documentation for the project, including overview, API reference, usage examples, and architecture.",
+        )
+        ragas_relevancy = ragas_scores.get("answer_relevancy")
+        ragas_correctness = ragas_scores.get("answer_correctness")
+
         # Create metrics object
         metrics = ComparisonMetrics(
             semantic_similarity=semantic_similarity,
@@ -93,6 +116,8 @@ class DocumentationComparator:
             readability_score=readability_score,
             word_count_ratio=word_count_ratio,
             section_coverage=section_coverage,
+            ragas_relevancy=ragas_relevancy,
+            ragas_correctness=ragas_correctness,
         )
 
         # Generate detailed analysis
@@ -485,14 +510,10 @@ Key differences:
         if not existing_docs:
             return {}
 
-        # Aggregate all existing documentation into a single string
-        # We can add separators to give the model some context on the document boundaries
         aggregated_existing_content = "\n\n--- (New Document) ---\n\n".join(
             [f"# Existing Document: {doc_type}\n\n{content}" for doc_type, content in existing_docs]
         )
 
-        # Now compare the comprehensive doc against the aggregated content
-        # We'll store the result under the 'comprehensive' key
         result = self.compare_documents(comprehensive_doc, aggregated_existing_content)
 
         return {"comprehensive": result}
@@ -527,7 +548,12 @@ Key differences:
             report += f"- Structural Similarity: {result.metrics.structural_similarity:.3f}\n"
             report += f"- ROUGE-1: {result.metrics.rouge_scores.get('rouge1', 0):.3f}\n"
             report += f"- BERTScore: {result.metrics.bert_score:.3f}\n"
-            report += f"- Section Coverage: {result.metrics.section_coverage:.3f}\n\n"
+            report += f"- Section Coverage: {result.metrics.section_coverage:.3f}\n"
+            if result.metrics.ragas_relevancy is not None:
+                report += f"- Ragas Answer Relevancy: {result.metrics.ragas_relevancy:.3f}\n"
+            if result.metrics.ragas_correctness is not None:
+                report += f"- Ragas Answer Correctness: {result.metrics.ragas_correctness:.3f}\n"
+            report += "\n"
 
             report += f"### Recommendations\n"
             for rec in result.recommendations:
@@ -547,3 +573,50 @@ Key differences:
                 report += "\n"
 
         return report
+
+    def evaluate_with_ragas(self, generated_doc: str, existing_doc: str, question: str) -> Dict[str, float]:
+        """Evaluate documentation using Ragas"""
+        if not self.ragas_llm:
+            print("⚠️ Ragas LLM not initialized. Skipping Ragas evaluation.")
+            return {}
+
+        dataset_dict = {"question": [question], "answer": [generated_doc], "ground_truth": [existing_doc]}
+        dataset = Dataset.from_dict(dataset_dict)
+
+        metrics_to_use = [
+            answer_relevancy,
+            answer_correctness,
+        ]
+
+        try:
+            print("🤖 Running Ragas evaluation...")
+            result = evaluate(dataset, metrics=metrics_to_use, llm=self.ragas_llm)
+            print(f"✅ Ragas evaluation successful: {result}")
+            scores = {}
+
+            # Safely access Ragas results using try-except blocks
+            try:
+                relevancy = result["answer_relevancy"]
+                if isinstance(relevancy, float) and not np.isnan(relevancy):
+                    scores["answer_relevancy"] = relevancy
+                else:
+                    scores["answer_relevancy"] = None
+            except KeyError:
+                scores["answer_relevancy"] = None
+
+            try:
+                correctness = result["answer_correctness"]
+                if isinstance(correctness, float) and not np.isnan(correctness):
+                    scores["answer_correctness"] = correctness
+                else:
+                    scores["answer_correctness"] = None
+            except KeyError:
+                scores["answer_correctness"] = None
+
+            return scores
+        except Exception as e:
+            import traceback
+
+            print(f"❌ Ragas evaluation failed: {e}")
+            print(traceback.format_exc())
+            return {}
