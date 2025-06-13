@@ -321,7 +321,7 @@ class LLMDocumentationChain:
             - Include both high-level concepts and detailed technical information
             - Ensure examples use the actual API discovered in the code
             
-            Generate the complete, production-ready comprehensive documentation:
+            Generate the complete, production-ready comprehensive readme documentation. **You must include every section listed above.**
             """,
         )
         formatted_prompt = prompt.format(
@@ -595,51 +595,108 @@ class EnhancedDocumentationGenerator:
         self, doc_type: str, code_analysis: Dict[str, Any], relevant_content: List[Dict[str, Any]], output_format: str
     ) -> str:
         """Build a prompt that incorporates existing documentation context."""
+
         project_info = f"""
-Project Information:
-- Name: {code_analysis.get('name', 'Unknown')}
-- Language: {code_analysis.get('primary_language', 'Unknown')}
-- Description: {code_analysis.get('description', 'No description available')}
-- Dependencies: {', '.join(code_analysis.get('dependencies', [])[:5])}
-- File Count: {code_analysis.get('file_count', 0)}
-- Entry Points: {', '.join(code_analysis.get('entry_points', [])[:3])}
+### Code Analysis Summary
+- **Name**: {code_analysis.get('name', 'Unknown')}
+- **Language**: {code_analysis.get('primary_language', 'Unknown')}
+- **Description**: {code_analysis.get('description', 'No description available')}
+- **Dependencies**: {', '.join(code_analysis.get('dependencies', [])[:5])}
+- **File Count**: {code_analysis.get('file_count', 0)}
+- **Entry Points**: {', '.join(code_analysis.get('entry_points', [])[:3])}
 """
+
         modules_summary = ""
         if code_analysis.get("modules"):
             modules = code_analysis["modules"][:10]
-            modules_summary = "\nKey Modules:\n"
+            modules_summary = "\n### Key Modules:\n"
             for module in modules:
                 functions_count = len(module.get("functions", []))
                 classes_count = len(module.get("classes", []))
                 modules_summary += (
-                    f"- {module.get('name', 'Unknown')}: {functions_count} functions, {classes_count} classes\n"
+                    f"- **{module.get('name', 'Unknown')}**: {functions_count} functions, {classes_count} classes\n"
                 )
+
         existing_context = ""
         if relevant_content:
-            existing_context = "\nExisting Documentation Context:\n"
+            existing_context = "\n### Existing Documentation Context\n"
             for i, content in enumerate(relevant_content, 1):
                 source = content["metadata"].get("file_name", "unknown file")
+                # Emphasize the root README file
+                source_emphasis = " (PRIMARY SOURCE)" if "readme.md" in source.lower() else ""
+
                 if self.summarizer.should_summarize(content["content"]):
                     content_summary = self.summarizer.summarize_existing_documentation(content["content"])
-                    existing_context += f"\n{i}. From {source} (summarized):\n{content_summary}\n"
+                    existing_context += f"\n**{i}. From {source}{source_emphasis} (summarized):**\n{content_summary}\n"
                 else:
-                    existing_context += f"\n{i}. From {source}:\n{content['content']}\n"
+                    existing_context += f"\n**{i}. From {source}{source_emphasis}:**\n{content['content']}\n"
+
+        # The main prompt structure
         prompt = f"""
-You are a technical documentation expert. Generate comprehensive {doc_type} documentation 
-for the following project, incorporating insights from existing documentation where relevant.
+# ROLE
+You are an expert technical writer and senior software engineer. Your task is to analyze a software project and produce a comprehensive, high-quality README.md file that is clear, accurate, and easy for new developers to understand.
+
+# PRIMARY GOAL
+Ingest and analyze the provided source code and existing documentation to generate a definitive project README.md. This document should serve as the single source of truth for getting started with and understanding the project.
+
+# CONTEXT
+Here is the information I've gathered about the project:
+{existing_context}
+**IMPORTANT**: The content above, especially from the root README.md, should be the foundation of your generated document. You must preserve its key information and structure while enhancing it with details from the code analysis.
 
 {project_info}
 {modules_summary}
-{existing_context}
 
-Instructions:
-1. Create {doc_type} documentation in {output_format} format
-2. Use information from the code analysis as the primary source
-3. Incorporate relevant insights from existing documentation context when appropriate
-4. Ensure the documentation is comprehensive, accurate, and well-structured
-5. If existing documentation provides good examples or explanations, adapt them appropriately
-6. Maintain consistency with the existing documentation style where possible
+# TASK
+Generate a single, comprehensive README.md document. You MUST follow this exact structure and include ALL of the following sections in this order:
 
-Generate the {doc_type} documentation:
+--- START OF REQUIRED STRUCTURE ---
+# {code_analysis.get('name', 'Project')}
+
+## Table of Contents
+[Generate a complete table of contents for all sections below]
+
+## Overview
+[Provide a comprehensive overview of the project, its purpose, and key features. BASE THIS on the existing documentation and enhance with code analysis.]
+
+## Features
+[List and explain all major features discovered in the codebase and existing documentation.]
+
+## Installation
+[Provide detailed, step-by-step installation instructions. Use information from the existing documentation as the primary source.]
+
+## Quick Start
+[Create a concise getting-started guide with a simple, runnable code example. The example must be based on the project's actual API and entry points.]
+
+## Usage Examples
+[Provide multiple practical, runnable examples demonstrating different use cases and scenarios. These must use actual module/function names.]
+
+## API Reference
+[Provide a summary of the core API, covering major modules, classes, and functions. Include descriptions, signatures, parameters, and return values for key components.]
+
+## Architecture
+[Give a high-level technical overview of the system architecture, including component relationships, data flow, and key design patterns used.]
+
+## Configuration
+[Detail any configuration options, environment variables, or settings required to run the project.]
+
+## Development
+[Summarize the guidelines for contributing to the project, including code style, testing, and the pull request process. Use the existing contributing documents as a base.]
+
+## Troubleshooting
+[List common issues, potential errors, and their solutions.]
+
+## License
+[State the project's license.]
+--- END OF REQUIRED STRUCTURE ---
+
+# CRITICAL INSTRUCTIONS
+1.  **Mandatory Sections**: You MUST include every section listed in the "REQUIRED STRUCTURE" above. Do not omit any.
+2.  **Base on Existing README**: The root README content provided in the context is the most important source. Your job is to enrich it, not replace it. Preserve the original intent, style, and key information.
+3.  **Fact-Based**: All information must be derived directly from the provided code analysis and documentation context. Do not invent features or instructions.
+4.  **Code Examples**: All code examples MUST be realistic, runnable, and use the actual API discovered in the code.
+5.  **Format**: The output must be a single Markdown file.
+
+Begin the generation now.
 """
         return prompt
