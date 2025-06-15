@@ -55,10 +55,10 @@ Repository → Code Analyzer → LLM Generator → Quality Comparator → Report
 ```
 
 ### Supported Models
-- **GPT-4o**: Best quality, fastest
+- **GPT-4o**: Comprehensive and good for many tasks
 - **GPT-4o-mini**: Cost-effective  
 - **GPT-4.1-mini**: Enhanced capabilities
-- **o4-mini**: Lightweight option
+- **o4-mini**: Reasoning model option
 
 ## 📊 Example Output
 
@@ -125,7 +125,6 @@ docs = agent.generate_documentation()
 │   └── comparator.py  # Quality assessment
 ├── app/               # User interfaces
 │   ├── app_gradio.py  # Modern Gradio web interface
-│   └── run_gradio.py  # App launcher
 ├── scripts/           # Demo & testing scripts
 │   ├── demo.py        # CLI demonstration
 │   ├── test_analysis.py  # Analysis testing

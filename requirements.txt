@@ -40,3 +40,4 @@ gradio
 bert-score
 rouge-score
 nltk
+ragas

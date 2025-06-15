@@ -48,7 +48,7 @@ class LLMManager:
         if os.getenv("OPENAI_API_KEY"):
             return LLMConfig(
                 provider="openai",
-                model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
+                model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                 api_key=os.getenv("OPENAI_API_KEY"),
                 base_url=os.getenv("OPENAI_BASE_URL"),
             )
