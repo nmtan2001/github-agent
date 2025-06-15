@@ -594,23 +594,31 @@ Key differences:
             print(f"✅ Ragas evaluation successful: {result}")
             scores = {}
 
-            # Safely access Ragas results using try-except blocks
+            # Safely access Ragas results, which returns a list of scores.
             try:
-                relevancy = result["answer_relevancy"]
-                if isinstance(relevancy, float) and not np.isnan(relevancy):
-                    scores["answer_relevancy"] = relevancy
+                relevancy_list = result["answer_relevancy"]
+                if relevancy_list and len(relevancy_list) > 0:
+                    relevancy = relevancy_list[0]
+                    if isinstance(relevancy, float) and not np.isnan(relevancy):
+                        scores["answer_relevancy"] = relevancy
+                    else:
+                        scores["answer_relevancy"] = None
                 else:
                     scores["answer_relevancy"] = None
-            except KeyError:
+            except (KeyError, IndexError):
                 scores["answer_relevancy"] = None
 
             try:
-                correctness = result["answer_correctness"]
-                if isinstance(correctness, float) and not np.isnan(correctness):
-                    scores["answer_correctness"] = correctness
+                correctness_list = result["answer_correctness"]
+                if correctness_list and len(correctness_list) > 0:
+                    correctness = correctness_list[0]
+                    if isinstance(correctness, float) and not np.isnan(correctness):
+                        scores["answer_correctness"] = correctness
+                    else:
+                        scores["answer_correctness"] = None
                 else:
                     scores["answer_correctness"] = None
-            except KeyError:
+            except (KeyError, IndexError):
                 scores["answer_correctness"] = None
 
             return scores
