@@ -617,8 +617,8 @@ def create_interface():
         with gr.Row():
             with gr.Column():
                 gr.HTML('<div class="section-box"><h2>🚀 Example Walkthrough</h2></div>')
-                walkthrough_btn = gr.Button("📖 Show Example Use Case", variant="secondary")
-                walkthrough_display = gr.Markdown("")
+                with gr.Accordion("📖 Show Example Use Case", open=False):
+                    gr.Markdown(agent_interface.run_example_walkthrough())
 
         # Step 1: Configuration
         with gr.Row():
@@ -722,10 +722,10 @@ def create_interface():
                     - **Short format**: `github.com/username/repo`
                     
                     ## 💡 Model Recommendations
-                    - **GPT-4o**: Best quality, excellent for complex analysis
-                    - **GPT-4o-mini**: Cost-effective, good for most projects
+                    - **GPT-4o**: Good quality, good for most projects
+                    - **GPT-4o-mini**: Cost-effective
                     - **GPT-4.1-mini**: Improved capabilities
-                    - **o4-mini**: Lightweight for smaller projects
+                    - **o4-mini**: Reasoning model for complex tasks
                     
                     ## 📊 README Comparison
                     The system automatically compares your generated documentation with the original README to show:
@@ -737,8 +737,6 @@ def create_interface():
                     )
 
         # Event handlers
-        walkthrough_btn.click(agent_interface.run_example_walkthrough, outputs=[walkthrough_display])
-
         # Progressive workflow that updates UI after each step
         def progressive_workflow(*inputs):
             """Generator function for progressive updates"""
