@@ -106,11 +106,12 @@ The agent creates a single, comprehensive documentation file that combines all a
 """
         return walkthrough_md
 
-    def initialize_agent(self, api_key, model_name, repo_path):
+    def initialize_agent(self, model_name, repo_path):
         """Initialize the documentation agent"""
+        api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             return (
-                "❌ Error: Please provide OpenAI API key",
+                "❌ Error: OPENAI_API_KEY not found in environment. Please create a .env file and add your key.",
                 "",
                 "",
                 "",
@@ -338,12 +339,10 @@ The agent could not find an existing README.md to compare against. The generated
 
             return f"❌ Comparison failed: {e}\n\nDetails:\n{traceback.format_exc()}", gr.update(visible=False)
 
-    def full_workflow(self, api_key, model_name, repo_path):
+    def full_workflow(self, model_name, repo_path):
         """Complete workflow: Initialize -> Analyze -> Generate -> Compare"""
         # Step 1: Initialize Agent
-        init_status, _, _, _, analysis_visible, generation_visible = self.initialize_agent(
-            api_key, model_name, repo_path
-        )
+        init_status, _, _, _, analysis_visible, generation_visible = self.initialize_agent(model_name, repo_path)
 
         if "❌" in init_status:
             return (
@@ -429,7 +428,7 @@ The agent could not find an existing README.md to compare against. The generated
             comparison_visible,
         )
 
-    def run_progressive_workflow(self, api_key, model_name, repo_path):
+    def run_progressive_workflow(self, model_name, repo_path):
         """Progressive workflow that yields results after each step"""
 
         # Step 1: Initialize Agent
@@ -443,7 +442,7 @@ The agent could not find an existing README.md to compare against. The generated
         )
 
         try:
-            init_result = self.initialize_agent(api_key, model_name, repo_path)
+            init_result = self.initialize_agent(model_name, repo_path)
             init_status = init_result[0]
 
             if "❌" in init_status:
@@ -627,12 +626,6 @@ def create_interface():
 
                 with gr.Row():
                     with gr.Column(scale=2):
-                        api_key = gr.Textbox(
-                            label="🔑 OpenAI API Key",
-                            type="password",
-                            placeholder="sk-...",
-                            info="Your OpenAI API key for LLM access",
-                        )
                         repo_path = gr.Textbox(
                             label="📁 Repository Path or GitHub URL",
                             value="python-sdk",
@@ -746,7 +739,6 @@ def create_interface():
         init_btn.click(
             progressive_workflow,
             inputs=[
-                api_key,
                 model_name,
                 repo_path,
             ],

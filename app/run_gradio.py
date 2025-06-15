@@ -6,6 +6,10 @@ Main launcher for LLM Documentation Agent
 import sys
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Add project root to Python path for robust imports
 project_root = Path(__file__).resolve().parent.parent
@@ -21,6 +25,7 @@ def main():
         print("🚀 Starting LLM Documentation Agent with Gradio...")
         print("📍 Open your browser to: http://localhost:7860")
         print("🗂️ Project structure reorganized for better maintainability")
+        print("🔑 API keys will be loaded from your .env file")
         print()
 
         interface = create_interface()
