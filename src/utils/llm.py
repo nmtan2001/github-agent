@@ -22,7 +22,7 @@ class LLMConfig:
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     max_tokens: Optional[int] = None
-    temperature: float = 0.3
+    temperature: float = 0
 
 
 class LLMManager:

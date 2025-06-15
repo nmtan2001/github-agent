@@ -270,78 +270,6 @@ The agent creates a single, comprehensive documentation file that combines all a
             error_details = f"❌ Documentation generation failed: {e}\n\nDetails:\n{traceback.format_exc()}"
             return error_details, "", gr.update(visible=False)
 
-    def analyze_repository(self):
-        """Analyze repository (compatibility method for workflows that expect separate analysis)"""
-        if not self.agent:
-            return "⚠️ Warning: Please initialize the agent first", "", "", "", gr.update(visible=False)
-
-        try:
-            # Use the agent's analyze_repository method
-            self.repo_metadata, self.modules = self.agent.analyze_repository()
-
-            # Format analysis results for display
-            metrics_content = f"""
-**Repository:** {self.repo_metadata.name or 'N/A'}
-**Language:** {self.repo_metadata.language}
-**Files:** {self.repo_metadata.file_count:,}
-**Size:** {self.repo_metadata.size:,} bytes
-**Complexity:** {self.repo_metadata.complexity_score:.2f}
-"""
-
-            details_content = f"""
-## 📊 Repository Analysis Results
-
-### 🏗️ Structure Overview
-- **Name:** {self.repo_metadata.name or 'N/A'}
-- **Primary Language:** {self.repo_metadata.language}
-- **Total Files:** {self.repo_metadata.file_count:,}
-- **Repository Size:** {self.repo_metadata.size:,} bytes
-- **Complexity Score:** {self.repo_metadata.complexity_score:.2f}/5.0
-
-### 📝 Description
-{self.repo_metadata.description or 'No description available'}
-
-### 🗂️ Modules Found
-{len(self.modules)} modules analyzed:
-"""
-
-            for i, module in enumerate(self.modules[:10], 1):  # Show first 10 modules
-                details_content += f"""
-**{i}. {module.name}**
-- Path: `{module.path}`
-- Functions: {len(module.functions)}
-- Classes: {len(module.classes)}
-- Lines of Code: {module.lines_of_code}
-- Complexity: {module.complexity_score:.2f}
-"""
-
-            if len(self.modules) > 10:
-                details_content += f"\n... and {len(self.modules) - 10} more modules"
-
-            dependencies_content = f"""
-## 📦 Dependencies ({len(self.repo_metadata.dependencies)})
-
-"""
-            for i, dep in enumerate(self.repo_metadata.dependencies[:20], 1):  # Show first 20 deps
-                dependencies_content += f"{i}. `{dep}`\n"
-
-            if len(self.repo_metadata.dependencies) > 20:
-                dependencies_content += f"\n... and {len(self.repo_metadata.dependencies) - 20} more dependencies"
-
-            return (
-                "✅ Repository analysis completed!",
-                metrics_content,
-                details_content,
-                dependencies_content,
-                gr.update(visible=True),
-            )
-
-        except Exception as e:
-            import traceback
-
-            error_details = f"❌ Analysis failed: {e}\n\nDetails:\n{traceback.format_exc()}"
-            return error_details, "", "", "", gr.update(visible=False)
-
     def compare_documentation(self):
         """Compare generated documentation with original README"""
         if not self.agent:
@@ -368,11 +296,23 @@ The agent could not find an existing README.md to compare against. The generated
             if not result:
                 return "Could not find comparison results for 'comprehensive' document.", gr.update(visible=True)
 
-            overall_score = (
-                result.metrics.semantic_similarity
-                + result.metrics.content_coverage
-                + result.metrics.structural_similarity
-            ) / 3
+            quality_scores = [
+                result.metrics.semantic_similarity,
+                result.metrics.bert_score,
+                result.metrics.readability_score,
+                result.metrics.word_count_ratio,
+                result.metrics.rouge_scores.get("rouge1", 0),
+                result.metrics.rouge_scores.get("rougeL", 0),
+            ]
+            if result.metrics.ragas_relevancy is not None:
+                quality_scores.append(result.metrics.ragas_relevancy)
+            if result.metrics.ragas_correctness is not None:
+                quality_scores.append(result.metrics.ragas_correctness)
+
+            if quality_scores:
+                overall_score = sum(quality_scores) / len(quality_scores)
+            else:
+                overall_score = 0
 
             comparison_content = f"""
 # 🎯 Overall Comparison Summary
@@ -382,10 +322,7 @@ The agent could not find an existing README.md to compare against. The generated
 ## Comprehensive Documentation vs Original README
 ### 📊 Similarity Metrics
 - **Semantic Similarity:** {result.metrics.semantic_similarity:.3f}
-- **Content Coverage:** {result.metrics.content_coverage:.3f}
-- **Structural Similarity:** {result.metrics.structural_similarity:.3f}
 - **ROUGE-1 Score:** {result.metrics.rouge_scores.get('rouge1', 0):.3f}
-- **ROUGE-2 Score:** {result.metrics.rouge_scores.get('rouge2', 0):.3f}
 - **ROUGE-L Score:** {result.metrics.rouge_scores.get('rougeL', 0):.3f}
 - **Word Count Ratio:** {result.metrics.word_count_ratio:.3f}
 """
@@ -423,42 +360,6 @@ The agent could not find an existing README.md to compare against. The generated
                 gr.update(visible=False),
             )
 
-        # Step 2: Analyze Repository
-        analysis_status = "🔄 Analyzing repository..."
-        try:
-            analysis_result = self.analyze_repository()
-            analysis_status, metrics, details, dependencies, results_visible = analysis_result
-
-            if "❌" in analysis_status:
-                return (
-                    init_status,
-                    analysis_status,
-                    "⏸️ Workflow stopped due to analysis error",
-                    metrics,
-                    details,
-                    dependencies,
-                    results_visible,
-                    "",
-                    gr.update(visible=False),
-                    "",
-                    gr.update(visible=False),
-                )
-        except Exception as e:
-            analysis_status = f"❌ Analysis failed: {e}"
-            return (
-                init_status,
-                analysis_status,
-                "⏸️ Workflow stopped due to analysis error",
-                "",
-                "",
-                "",
-                gr.update(visible=False),
-                "",
-                gr.update(visible=False),
-                "",
-                gr.update(visible=False),
-            )
-
         # Step 3: Generate Documentation
         generation_status = "🔄 Generating documentation..."
         try:
@@ -468,12 +369,12 @@ The agent could not find an existing README.md to compare against. The generated
             if "❌" in generation_status:
                 return (
                     init_status,
-                    analysis_status,
+                    # analysis_status,
                     generation_status,
                     "⏸️ Workflow stopped due to generation error",
-                    metrics,
-                    details,
-                    dependencies,
+                    # metrics,
+                    # details,
+                    # dependencies,
                     gr.update(visible=True),
                     docs_preview,
                     downloads,
@@ -484,11 +385,11 @@ The agent could not find an existing README.md to compare against. The generated
             generation_status = f"❌ Generation failed: {e}"
             return (
                 init_status,
-                analysis_status,
+                # analysis_status,
                 generation_status,
-                metrics,
-                details,
-                dependencies,
+                # metrics,
+                # details,
+                # dependencies,
                 gr.update(visible=True),
                 "",
                 gr.update(visible=False),
@@ -515,12 +416,12 @@ The agent could not find an existing README.md to compare against. The generated
 
         return (
             init_status,
-            analysis_status,
+            # analysis_status,
             generation_status,
             comparison_status,
-            metrics,
-            details,
-            dependencies,
+            # metrics,
+            # details,
+            # dependencies,
             gr.update(visible=True),
             docs_preview,
             downloads,

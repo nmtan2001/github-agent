@@ -38,7 +38,7 @@ class AgentConfig:
     output_dir: str = "generated_docs"
     openai_api_key: Optional[str] = None
     model_name: str = "gpt-4"
-    temperature: float = 0.3
+    temperature: float = 0
     max_tokens: Optional[int] = None
     doc_types: List[str] = None
     include_comparison: bool = True

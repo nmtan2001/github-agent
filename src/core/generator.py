@@ -36,7 +36,7 @@ class DocumentationConfig:
     """Configuration for documentation generation"""
 
     model_name: str = "gpt-4o-mini"
-    temperature: float = 0.3
+    temperature: float = 0
     max_tokens: Optional[int] = None
     include_examples: bool = True
     include_diagrams: bool = True

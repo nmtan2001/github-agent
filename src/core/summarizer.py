@@ -21,9 +21,9 @@ class SummarizationConfig:
     """Configuration for content summarization"""
 
     model_name: str = "gpt-4o-mini"  # Use cheaper model for summarization
-    temperature: float = 0.1  # Low temperature for consistent summaries
+    temperature: float = 0  # Low temperature for consistent summaries
     max_tokens: Optional[int] = None  # No limit for summary length
-    target_length: int = 200  # Target character length for summaries
+    target_length: int = 2000  # Target character length for summaries
 
 
 class ContentSummarizer:
