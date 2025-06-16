@@ -1,6 +1,5 @@
 """
 LLM Manager for handling language model interactions.
-Supports multiple providers including OpenAI, Anthropic, and local models.
 """
 
 import os
@@ -8,7 +7,6 @@ import logging
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 import openai
-from anthropic import Anthropic
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +15,7 @@ logger = logging.getLogger(__name__)
 class LLMConfig:
     """Configuration for LLM providers."""
 
-    provider: str  # "openai", "anthropic", "local"
+    provider: str
     model: str
     api_key: Optional[str] = None
     base_url: Optional[str] = None
@@ -53,17 +51,9 @@ class LLMManager:
                 base_url=os.getenv("OPENAI_BASE_URL"),
             )
 
-        # Check for Anthropic
-        elif os.getenv("ANTHROPIC_API_KEY"):
-            return LLMConfig(
-                provider="anthropic",
-                model=os.getenv("ANTHROPIC_MODEL", "claude-3-sonnet-20240229"),
-                api_key=os.getenv("ANTHROPIC_API_KEY"),
-            )
-
         # Default to OpenAI (will require API key to be set)
         else:
-            logger.warning("No API keys found in environment. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY")
+            logger.warning("No API keys found in environment. Please set OPENAI_API_KEY")
             return LLMConfig(provider="openai", model="gpt-3.5-turbo", api_key=None)
 
     def _initialize_client(self):
@@ -71,8 +61,6 @@ class LLMManager:
         try:
             if self.config.provider == "openai":
                 self.client = openai.OpenAI(api_key=self.config.api_key, base_url=self.config.base_url)
-            elif self.config.provider == "anthropic":
-                self.client = Anthropic(api_key=self.config.api_key)
             else:
                 logger.error(f"Unsupported provider: {self.config.provider}")
 
@@ -108,8 +96,6 @@ class LLMManager:
         try:
             if self.config.provider == "openai":
                 return self._generate_openai(prompt, max_tokens, temperature, system_prompt)
-            elif self.config.provider == "anthropic":
-                return self._generate_anthropic(prompt, max_tokens, temperature, system_prompt)
             else:
                 raise ValueError(f"Unsupported provider: {self.config.provider}")
 
@@ -131,12 +117,9 @@ class LLMManager:
 
         return response.choices[0].message.content
 
-    def _generate_anthropic(
-        self, prompt: str, max_tokens: int, temperature: float, system_prompt: Optional[str]
-    ) -> str:
-        """Generate content using Anthropic API."""
+    def _generate_openai(self, prompt: str, max_tokens: int, temperature: float, system_prompt: Optional[str]) -> str:
+        """Generate content using OpenAI API."""
 
-        # Anthropic handles system prompts differently
         full_prompt = prompt
         if system_prompt:
             full_prompt = f"{system_prompt}\n\nHuman: {prompt}\n\nAssistant:"
