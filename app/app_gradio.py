@@ -339,95 +339,6 @@ The agent could not find an existing README.md to compare against. The generated
 
             return f"❌ Comparison failed: {e}\n\nDetails:\n{traceback.format_exc()}", gr.update(visible=False)
 
-    def full_workflow(self, model_name, repo_path):
-        """Complete workflow: Initialize -> Analyze -> Generate -> Compare"""
-        # Step 1: Initialize Agent
-        init_status, _, _, _, analysis_visible, generation_visible = self.initialize_agent(model_name, repo_path)
-
-        if "❌" in init_status:
-            return (
-                init_status,
-                "⏸️ Workflow stopped due to initialization error",
-                "⏸️ Workflow stopped due to initialization error",
-                "",
-                "",
-                "",
-                gr.update(visible=False),
-                "",
-                gr.update(visible=False),
-                "",
-                gr.update(visible=False),
-            )
-
-        # Step 3: Generate Documentation
-        generation_status = "🔄 Generating documentation..."
-        try:
-            generation_result = self.generate_documentation()
-            generation_status, docs_preview, downloads = generation_result
-
-            if "❌" in generation_status:
-                return (
-                    init_status,
-                    # analysis_status,
-                    generation_status,
-                    "⏸️ Workflow stopped due to generation error",
-                    # metrics,
-                    # details,
-                    # dependencies,
-                    gr.update(visible=True),
-                    docs_preview,
-                    downloads,
-                    "",
-                    gr.update(visible=False),
-                )
-        except Exception as e:
-            generation_status = f"❌ Generation failed: {e}"
-            return (
-                init_status,
-                # analysis_status,
-                generation_status,
-                # metrics,
-                # details,
-                # dependencies,
-                gr.update(visible=True),
-                "",
-                gr.update(visible=False),
-                "",
-                gr.update(visible=False),
-            )
-
-        # Step 4: Compare Documentation
-        comparison_status = "🔄 Comparing with existing documentation..."
-        comparison_content = ""
-        comparison_visible = gr.update(visible=False)
-
-        try:
-            comparison_result = self.compare_documentation()
-            comparison_content, comparison_visible = comparison_result
-            if "❌" in comparison_content or "⚠️" in comparison_content:
-                comparison_status = comparison_content.split("\n")[0]  # First line as status
-            else:
-                comparison_status = "✅ Comparison completed successfully!"
-        except Exception as e:
-            comparison_status = f"❌ Comparison failed: {e}"
-            comparison_content = f"Error during comparison: {str(e)}"
-            comparison_visible = gr.update(visible=True)
-
-        return (
-            init_status,
-            # analysis_status,
-            generation_status,
-            comparison_status,
-            # metrics,
-            # details,
-            # dependencies,
-            gr.update(visible=True),
-            docs_preview,
-            downloads,
-            comparison_content,
-            comparison_visible,
-        )
-
     def run_progressive_workflow(self, model_name, repo_path):
         """Progressive workflow that yields results after each step"""
 
@@ -684,12 +595,12 @@ def create_interface():
                     ## 🚀 How to Use
                     
                     **Step 1:** Configure your settings
-                    - Enter your OpenAI API key
-                    - Set repository path or GitHub URL
-                    - Choose your preferred model
+                    - Make sure your `OPENAI_API_KEY` is set in your `.env` file.
+                    - Set repository path or GitHub URL.
+                    - Choose your preferred model.
                     
                     **Step 2:** Generate comprehensive documentation
-                    - Click "Start Complete Workflow" to create a unified document
+                    - Click "Start Complete Workflow" to create a unified document.
                     - Preview and download your documentation
                     
                     **Step 3:** Review README comparison
