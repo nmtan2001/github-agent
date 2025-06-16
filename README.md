@@ -2,14 +2,15 @@
 
 > **Personal Project Showcase**: AI-powered documentation generation using Large Language Models
 
-An intelligent system that analyzes code repositories and automatically generates comprehensive documentation (README, API docs, tutorials) with quality assessment metrics.
+An intelligent system that analyzes code repositories and automatically generates comprehensive documentation with quality assessment metrics.
 
 ## 🌟 Key Features
 
 - **🔍 Smart Code Analysis**: Multi-language repository parsing with complexity metrics
 - **📝 AI Documentation**: Generate README, API docs, tutorials using GPT-4o/mini models
 - **⚖️ Quality Assessment**: Compare generated vs existing docs with similarity metrics
-- **🚀 Modern UI**: Fast Gradio web interface (migrated from Streamlit for better performance)
+- **🌐 GitHub Integration**: Automatic repository cloning from GitHub URLs
+- **🚀 Modern UI**: Fast Gradio web interface 
 
 ## 🚀 Quick Start
 
@@ -21,10 +22,19 @@ pip install -r requirements.txt
 
 # Set API key and run
 export OPENAI_API_KEY="your-key-here"
-python3 run.py
+python3 app/run_gradio.py
 ```
 
-**No API Key?** Test analysis only: `python3 scripts/test_analysis.py`
+## 📁 Repository Input Options
+
+The agent now supports multiple input formats:
+
+- **Local paths**: `./my-project`, `/absolute/path/to/repo`
+- **GitHub HTTPS**: `https://github.com/username/repository`
+- **GitHub SSH**: `git@github.com:username/repository.git`
+- **Short format**: `github.com/username/repository`
+
+GitHub repositories are automatically cloned to a temporary directory and cleaned up after processing.
 
 ## 🎯 How It Works
 
@@ -38,80 +48,41 @@ python3 run.py
 ```
 Repository → Code Analyzer → LLM Generator → Quality Comparator → Reports
               ↓              ↓               ↓
-          AST Parser     GPT-4o Chain    Similarity Metrics
-          Dependencies   Templates       Recommendations
+          AST Parser     GPT Chain    Similarity Metrics
+          Dependencies   Templates       
 ```
 
 ### Supported Models
-- **GPT-4o**: Best quality, fastest
+- **GPT-4o**: Comprehensive and good for many tasks
 - **GPT-4o-mini**: Cost-effective  
 - **GPT-4.1-mini**: Enhanced capabilities
-- **o4-mini**: Lightweight option
-
-## 📊 Example Output
-
-**Analysis Results:**
-```
-Repository: python-sdk
-Language: Python | Files: 167 | Dependencies: 109
-Complexity Score: 2.49 | Generated: 4 document types
-Quality Score: 0.82/1.0 (85% correlation with human evaluation)
-```
-
-**Generated Documentation:**
-- ✅ Professional README with badges and structure
-- ✅ API documentation with examples
-- ✅ Tutorial guides with step-by-step instructions
-- ✅ Architecture documentation with diagrams
+- **o4-mini**: Reasoning model option
 
 ## 🛠️ Tech Stack
 
-- **LLM Framework**: LangChain + OpenAI API
-- **Code Analysis**: Python AST + Tree-sitter (multi-language)
-- **UI**: Gradio 4.44+ (modern, fast interface)
-- **Metrics**: Sentence Transformers, ROUGE, BERTScore
-- **Languages**: Python (full), JavaScript, TypeScript, Java, C++ (basic)
-
-## 🔧 Configuration
-
-```python
-from src.core.agent import DocumentationAgent, AgentConfig
-
-config = AgentConfig(
-    repo_path="./my-project",
-    model_name="gpt-4o-mini",
-    doc_types=["readme", "api", "tutorial"]
-)
-
-agent = DocumentationAgent(config)
-docs = agent.generate_documentation()
-```
-
-## 🧪 Validation
-
-- **Tested**: 50+ repositories, multiple languages
-- **Performance**: ~500 files/minute analysis, ~30s generation
-- **Accuracy**: 85% correlation with human evaluation
-- **Success Rate**: 94% completion rate
+- **LLM Framework**: LangChain + OpenAI API + LlamaIndex
+- **Code Analysis**: Python AST + Tree-sitter 
+- **UI**: Gradio (modern, fast interface)
+- **Metrics**: Sentence Transformers, ROUGE, BERTScore, Ragas
+- **Languages**: Python
 
 ## 📁 Project Structure
 
 ```
-├── src/core/          # Core business logic
-│   ├── agent.py       # Main orchestrator
-│   ├── analyzer.py    # Code analysis engine  
-│   ├── generator.py   # LLM documentation generator
-│   └── comparator.py  # Quality assessment
+├── src/
+│   ├── core/          # Core business logic
+│   │   ├── agent.py       # Main orchestrator
+│   │   ├── analyzer.py    # Code analysis engine
+│   │   ├── generator.py   # LLM documentation generator
+│   │   ├── comparator.py  # Quality assessment
+│   │   ├── summarizer.py  # Code summarization
+│   │   └── document_reader.py # Reads existing documentation
+│   └── utils/           # Utility functions
+│       ├── llm.py         # Language model utilities
+│       └── templates.py   # Prompt templates
 ├── app/               # User interfaces
-│   ├── app_gradio.py  # Modern Gradio web interface
-│   └── run_gradio.py  # App launcher
-├── scripts/           # Demo & testing scripts
-│   ├── demo.py        # CLI demonstration
-│   ├── test_analysis.py  # Analysis testing
-│   └── test_improved_docs.py  # Quality tests
-├── docs/              # Documentation files
-├── python-sdk/        # Example repository
-└── run.py             # Main launcher
+│   ├── run_gradio.py    # Main launcher for Gradio UI
+│   └── app_gradio.py  # Modern Gradio web interface
 ```
 
 ---

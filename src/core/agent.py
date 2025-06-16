@@ -16,8 +16,11 @@ from pathlib import Path
 import logging
 
 from .analyzer import CodeAnalyzer, RepositoryMetadata, ModuleInfo
-from .generator import DocumentationGenerator, DocumentationConfig, GeneratedDocument
+from .generator import DocumentationGenerator, DocumentationConfig, GeneratedDocument, EnhancedDocumentationGenerator
 from .comparator import DocumentationComparator, ComparisonResult
+from .document_reader import DocumentReader, DocumentChunk
+from ..utils.llm import LLMManager
+from ..utils.templates import TemplateManager
 
 try:
     from git import Repo
@@ -35,12 +38,21 @@ class AgentConfig:
     output_dir: str = "generated_docs"
     openai_api_key: Optional[str] = None
     model_name: str = "gpt-4"
-    temperature: float = 0.3
-    max_tokens: int = 2000
+    temperature: float = 0
+    max_tokens: Optional[int] = None
     doc_types: List[str] = None
     include_comparison: bool = True
     save_intermediate: bool = True
     auto_cleanup: bool = True  # Whether to cleanup cloned repos automatically
+
+    # Enhanced documentation settings
+    use_enhanced_generator: bool = True  # Use enhanced generator with README embedding logic
+    auto_discover_docs: bool = True
+    docs_paths: List[str] = None
+    exclude_patterns: List[str] = None
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
+    similarity_threshold: float = 0.7
 
     def __post_init__(self):
         if self.doc_types is None:
@@ -48,6 +60,12 @@ class AgentConfig:
 
         if self.openai_api_key:
             os.environ["OPENAI_API_KEY"] = self.openai_api_key
+
+        if self.docs_paths is None:
+            self.docs_paths = []
+
+        if self.exclude_patterns is None:
+            self.exclude_patterns = ["*.git/*", "*.node_modules/*", "*.venv/*", "*/__pycache__/*"]
 
     @staticmethod
     def is_github_url(path: str) -> bool:
@@ -115,6 +133,20 @@ class DocumentationAgent:
 
         # Initialize components
         self.analyzer = CodeAnalyzer(actual_repo_path)
+
+        # Choose generator based on configuration
+        if config.use_enhanced_generator:
+            self.llm_manager = LLMManager()
+            self.template_manager = TemplateManager()
+            self.enhanced_generator = EnhancedDocumentationGenerator(
+                llm_manager=self.llm_manager,
+                template_manager=self.template_manager,
+                chunk_size=config.chunk_size,
+                chunk_overlap=config.chunk_overlap,
+            )
+        else:
+            self.enhanced_generator = None
+
         self.generator = DocumentationGenerator(
             DocumentationConfig(
                 model_name=config.model_name,
@@ -130,6 +162,8 @@ class DocumentationAgent:
         self.modules = []
         self.generated_docs = []
         self.comparison_results = {}
+        self.existing_docs_loaded = False
+        self.docs_summary = {}
 
     def _setup_logging(self) -> logging.Logger:
         """Setup logging for the agent"""
@@ -200,6 +234,204 @@ class DocumentationAgent:
         except Exception as e:
             self.logger.error(f"Failed to clone repository {github_url}: {str(e)}")
             raise RuntimeError(f"Failed to clone repository: {str(e)}")
+
+    def auto_discover_documentation(self, repo_path: Optional[str] = None) -> List[str]:
+        """
+        Automatically discover documentation files in the repository.
+
+        Args:
+            repo_path: Path to repository (uses config if not provided)
+
+        Returns:
+            List of discovered documentation paths
+        """
+        if not repo_path:
+            repo_path = self.config.repo_path if not self._cloned_repo_path else self._cloned_repo_path
+
+        doc_paths = []
+        repo_root = Path(repo_path)
+
+        # Common documentation directories
+        doc_dirs = ["docs", "doc", "documentation", "guide", "guides"]
+
+        # Common documentation files
+        doc_files = [
+            "README.md",
+            "README.rst",
+            "README.txt",
+            "INSTALL.md",
+            "INSTALLATION.md",
+            "USAGE.md",
+            "TUTORIAL.md",
+            "CONTRIBUTING.md",
+            "CHANGELOG.md",
+            "API.md",
+            "REFERENCE.md",
+        ]
+
+        # Check for documentation directories
+        for doc_dir in doc_dirs:
+            dir_path = repo_root / doc_dir
+            if dir_path.exists() and dir_path.is_dir():
+                doc_paths.append(str(dir_path))
+                self.logger.info(f"Found documentation directory: {dir_path}")
+
+        # Check for documentation files in root
+        for doc_file in doc_files:
+            file_path = repo_root / doc_file
+            if file_path.exists() and file_path.is_file():
+                doc_paths.append(str(file_path))
+                self.logger.info(f"Found documentation file: {file_path}")
+
+        # Check for documentation in common subdirectories
+        for subdir in ["examples", "tutorials", "samples"]:
+            subdir_path = repo_root / subdir
+            if subdir_path.exists() and subdir_path.is_dir():
+                # Look for markdown/rst files
+                for ext in ["*.md", "*.rst", "*.txt"]:
+                    found_files = list(subdir_path.rglob(ext))
+                    if found_files:
+                        doc_paths.extend([str(f) for f in found_files])
+                        self.logger.info(f"Found {len(found_files)} documentation files in {subdir}")
+
+        return doc_paths
+
+    def load_existing_documentation(
+        self, docs_paths: Optional[List[str]] = None, exclude_patterns: Optional[List[str]] = None
+    ) -> bool:
+        """
+        Load existing documentation from specified paths.
+
+        Args:
+            docs_paths: List of paths to documentation directories/files
+            exclude_patterns: Patterns to exclude from loading
+
+        Returns:
+            True if documentation was loaded successfully
+        """
+        if not self.enhanced_generator:
+            self.logger.warning("Enhanced generator not available. Cannot load existing documentation.")
+            return False
+
+        docs_paths = docs_paths or self.config.docs_paths
+        exclude_patterns = exclude_patterns or self.config.exclude_patterns
+
+        if not docs_paths and self.config.auto_discover_docs:
+            # Auto-discover documentation
+            docs_paths = self.auto_discover_documentation()
+            self.config.docs_paths.extend(docs_paths)
+
+        if not docs_paths:
+            self.logger.warning("No documentation paths provided")
+            return False
+
+        # Filter to existing paths
+        existing_paths = [path for path in docs_paths if os.path.exists(path)]
+        if not existing_paths:
+            self.logger.warning(f"None of the provided documentation paths exist: {docs_paths}")
+            return False
+
+        self.logger.info(f"Loading existing documentation from: {existing_paths}")
+
+        # Load documentation using enhanced generator
+        success = self.enhanced_generator.load_existing_documentation(existing_paths, exclude_patterns)
+
+        if success:
+            self.existing_docs_loaded = True
+            self.docs_summary = self.enhanced_generator.document_reader.get_documentation_summary(
+                self.enhanced_generator.existing_docs
+            )
+            self.logger.info(f"Successfully loaded documentation: {self.docs_summary}")
+
+        return success
+
+    def generate_enhanced_documentation(
+        self, doc_types: Optional[List[str]] = None, load_existing: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Generate documentation using the enhanced generator with existing documentation context.
+
+        Args:
+            doc_types: Types of documentation to generate
+            load_existing: Whether to load existing documentation first
+
+        Returns:
+            Enhanced generation results
+        """
+        if not self.enhanced_generator:
+            raise RuntimeError("Enhanced generator not available. Set use_enhanced_generator=True in config.")
+
+        doc_types = doc_types or self.config.doc_types
+
+        # Load existing documentation if requested and not already loaded
+        if load_existing and not self.existing_docs_loaded:
+            self.load_existing_documentation()
+
+        # Get the repository path (use cloned path if available)
+        repo_path = self._cloned_repo_path or self.config.repo_path
+
+        self.logger.info(f"Generating enhanced documentation for: {repo_path}")
+
+        # Generate documentation with context
+        result = self.enhanced_generator.generate_documentation_with_context(
+            repo_path=repo_path,
+            output_format="markdown",
+            doc_types=doc_types,
+            context_similarity_threshold=self.config.similarity_threshold,
+        )
+
+        self.logger.info("Enhanced documentation generation completed")
+        return result
+
+    def run_enhanced_pipeline(self) -> Dict[str, Any]:
+        """Run the enhanced documentation generation pipeline with context awareness"""
+
+        # Load existing documentation if enabled
+        if self.config.auto_discover_docs:
+            self._discover_and_load_documentation()
+
+        # Generate documentation with context
+        generated_docs = self.enhanced_generator.generate_documentation_with_context(
+            repo_path=self.config.repo_path,
+            output_format="markdown",
+            context_similarity_threshold=0.7,
+        )
+
+        # Convert to format expected by the app (similar to standard pipeline)
+        return {
+            "documents": generated_docs,  # List of GeneratedDocument objects
+            "metadata": {
+                "total_documents": len(generated_docs),
+                "enhanced_with_embeddings": True,
+                "existing_docs_loaded": len(self.enhanced_generator.existing_docs) > 0,
+                "generation_method": "enhanced_with_context",
+            },
+        }
+
+    def _discover_and_load_documentation(self):
+        """Discover and load existing documentation for the enhanced generator"""
+        if not self.enhanced_generator:
+            return
+
+        try:
+            # Auto-discover documentation paths
+            discovered_paths = self.auto_discover_documentation()
+
+            # Combine with manually configured paths
+            all_paths = (self.config.docs_paths or []) + discovered_paths
+
+            if all_paths:
+                # Load documentation into the enhanced generator
+                success = self.enhanced_generator.load_existing_documentation(all_paths)
+                if success:
+                    self.logger.info(f"Loaded existing documentation from {len(all_paths)} paths")
+                else:
+                    self.logger.warning("Failed to load existing documentation")
+            else:
+                self.logger.info("No existing documentation paths found")
+
+        except Exception as e:
+            self.logger.warning(f"Error discovering/loading documentation: {e}")
 
     def __del__(self):
         """Cleanup cloned repositories on object destruction"""
@@ -364,7 +596,7 @@ class DocumentationAgent:
             raise
 
     def _find_existing_docs(self, docs_path: Optional[str] = None) -> List[Tuple[str, str]]:
-        """Find existing documentation files"""
+        """Find existing documentation files by searching the entire repository."""
         if docs_path:
             base_path = Path(docs_path)
         else:
@@ -377,41 +609,37 @@ class DocumentationAgent:
 
         existing_docs = []
 
-        # Common documentation file patterns
         doc_patterns = {
-            "readme": ["README.md", "README.rst", "README.txt", "readme.md"],
-            "api": ["API.md", "api.md", "docs/api.md", "docs/API.md"],
-            "tutorial": ["TUTORIAL.md", "tutorial.md", "docs/tutorial.md", "GETTING_STARTED.md"],
-            "architecture": ["ARCHITECTURE.md", "architecture.md", "docs/architecture.md"],
+            "readme": ["README.md", "readme.md", "README.rst", "README.txt", "README"],
+            "api": ["API.md", "api.md"],
+            "tutorial": ["TUTORIAL.md", "tutorial.md", "GETTING_STARTED.md"],
+            "architecture": ["ARCHITECTURE.md", "architecture.md"],
         }
 
+        exclude_dirs = [".git", ".venv", "node_modules", "__pycache__", "dist", "build"]
         self.logger.info(f"Searching for existing documentation in: {base_path}")
 
-        # Debug: List what files actually exist in the repository
-        if base_path.exists():
-            try:
-                files = list(base_path.glob("*"))
-                self.logger.info(f"Files in repository root: {[f.name for f in files[:10]]}")
-                # Check specifically for README files
-                readme_files = list(base_path.glob("README*"))
-                self.logger.info(f"README files found: {[f.name for f in readme_files]}")
-            except Exception as e:
-                self.logger.warning(f"Could not list repository files: {e}")
-        else:
-            self.logger.warning(f"Repository path does not exist: {base_path}")
-
         for doc_type, patterns in doc_patterns.items():
+            doc_found = False
             for pattern in patterns:
-                file_path = base_path / pattern
-                if file_path.exists():
+                found_files = list(base_path.glob(f"**/{pattern}"))
+
+                for file_path in found_files:
+                    if any(excluded in file_path.parts for excluded in exclude_dirs):
+                        continue
+
                     try:
                         with open(file_path, "r", encoding="utf-8") as f:
                             content = f.read()
                         existing_docs.append((doc_type, content))
                         self.logger.info(f"Found existing {doc_type} documentation: {file_path}")
-                        break  # Only take the first match per type
+                        doc_found = True
+                        break
                     except (UnicodeDecodeError, PermissionError) as e:
                         self.logger.warning(f"Could not read {file_path}: {str(e)}")
+
+                if doc_found:
+                    break
 
         if not existing_docs:
             self.logger.warning(f"No existing documentation found in {base_path}")
@@ -511,9 +739,7 @@ class DocumentationAgent:
 """
 
         for doc in report.generated_documents:
-            summary += (
-                f"- **{doc.doc_type.title()}**: {doc.word_count} words (confidence: {doc.confidence_score:.2f})\n"
-            )
+            summary += f"- **{doc.doc_type.title()}**: {doc.word_count} words\n"
 
         if report.comparison_results:
             summary += "\n## Comparison Results\n"
@@ -554,11 +780,12 @@ class DocumentationAgent:
 
         # Documentation quality recommendations
         if self.generated_docs:
-            avg_confidence = sum(doc.confidence_score for doc in self.generated_docs) / len(self.generated_docs)
+            # Check documentation word count as a quality indicator
+            avg_word_count = sum(doc.word_count for doc in self.generated_docs) / len(self.generated_docs)
 
-            if avg_confidence < 0.7:
+            if avg_word_count < 100:
                 recommendations.append(
-                    "Generated documentation confidence is low. Consider reviewing and manually improving the documentation."
+                    "Generated documentation appears brief. Consider reviewing and expanding the documentation for completeness."
                 )
 
         # Comparison-based recommendations

@@ -20,19 +20,25 @@ from nltk.corpus import stopwords
 from rouge_score import rouge_scorer
 import bert_score
 
+from datasets import Dataset
+from ragas import evaluate
+from ragas.metrics import answer_relevancy, answer_correctness
+from ragas.llms import LangchainLLMWrapper
+from langchain_openai import ChatOpenAI
+import os
+
 
 @dataclass
 class ComparisonMetrics:
     """Container for comparison metrics"""
 
     semantic_similarity: float
-    structural_similarity: float
-    content_coverage: float
     rouge_scores: Dict[str, float]
     bert_score: float
     readability_score: float
     word_count_ratio: float
-    section_coverage: float
+    ragas_relevancy: Optional[float] = None
+    ragas_correctness: Optional[float] = None
 
 
 @dataclass
@@ -42,20 +48,25 @@ class ComparisonResult:
     metrics: ComparisonMetrics
     detailed_analysis: Dict[str, Any]
     recommendations: List[str]
-    diff_summary: str
-    missing_sections: List[str]
-    additional_sections: List[str]
+    # diff_summary: str
+    # missing_sections: List[str]
+    # additional_sections: List[str]
 
 
 class DocumentationComparator:
     """Advanced documentation comparison using multiple similarity metrics"""
 
-    def __init__(self):
+    def __init__(self, model_name: str = "gpt-4o-mini", api_key: Optional[str] = None):
         # Initialize sentence transformer for semantic similarity
         self.sentence_model = SentenceTransformer("all-MiniLM-L6-v2")
 
         # Initialize ROUGE scorer
-        self.rouge_scorer = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
+        self.rouge_scorer = rouge_scorer.RougeScorer(["rouge1", "rougeL"], use_stemmer=True)
+
+        self.ragas_llm = None
+        used_api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if used_api_key:
+            self.ragas_llm = LangchainLLMWrapper(ChatOpenAI(model=model_name, api_key=used_api_key))
 
         # Download required NLTK data
         try:
@@ -70,29 +81,34 @@ class DocumentationComparator:
 
         self.stop_words = set(stopwords.words("english"))
 
-    def compare_documents(self, generated_doc: str, existing_doc: str, doc_type: str = "general") -> ComparisonResult:
+    def compare_documents(self, generated_doc: str, existing_doc: str) -> ComparisonResult:
         """Compare generated documentation with existing documentation"""
 
         # Calculate various similarity metrics
         semantic_similarity = self._calculate_semantic_similarity(generated_doc, existing_doc)
-        structural_similarity = self._calculate_structural_similarity(generated_doc, existing_doc)
-        content_coverage = self._calculate_content_coverage(generated_doc, existing_doc)
         rouge_scores = self._calculate_rouge_scores(generated_doc, existing_doc)
         bert_score_result = self._calculate_bert_score(generated_doc, existing_doc)
         readability_score = self._calculate_readability_score(generated_doc, existing_doc)
         word_count_ratio = self._calculate_word_count_ratio(generated_doc, existing_doc)
-        section_coverage = self._calculate_section_coverage(generated_doc, existing_doc)
+
+        # Ragas evaluation
+        ragas_scores = self.evaluate_with_ragas(
+            generated_doc=generated_doc,
+            existing_doc=existing_doc,
+            question="Provide a comprehensive documentation for the project, including overview, API reference, usage examples, and architecture.",
+        )
+        ragas_relevancy = ragas_scores.get("answer_relevancy")
+        ragas_correctness = ragas_scores.get("answer_correctness")
 
         # Create metrics object
         metrics = ComparisonMetrics(
             semantic_similarity=semantic_similarity,
-            structural_similarity=structural_similarity,
-            content_coverage=content_coverage,
             rouge_scores=rouge_scores,
             bert_score=bert_score_result,
             readability_score=readability_score,
             word_count_ratio=word_count_ratio,
-            section_coverage=section_coverage,
+            ragas_relevancy=ragas_relevancy,
+            ragas_correctness=ragas_correctness,
         )
 
         # Generate detailed analysis
@@ -102,18 +118,18 @@ class DocumentationComparator:
         recommendations = self._generate_recommendations(metrics, detailed_analysis)
 
         # Generate diff summary
-        diff_summary = self._generate_diff_summary(generated_doc, existing_doc)
+        # diff_summary = self._generate_diff_summary(generated_doc, existing_doc)
 
         # Find missing and additional sections
-        missing_sections, additional_sections = self._analyze_section_differences(generated_doc, existing_doc)
+        # missing_sections, additional_sections = self._analyze_section_differences(generated_doc, existing_doc)
 
         return ComparisonResult(
             metrics=metrics,
             detailed_analysis=detailed_analysis,
             recommendations=recommendations,
-            diff_summary=diff_summary,
-            missing_sections=missing_sections,
-            additional_sections=additional_sections,
+            # diff_summary=diff_summary,
+            # missing_sections=missing_sections,
+            # additional_sections=additional_sections,
         )
 
     def _calculate_semantic_similarity(self, doc1: str, doc2: str) -> float:
@@ -129,78 +145,16 @@ class DocumentationComparator:
         except Exception:
             return 0.0
 
-    def _calculate_structural_similarity(self, doc1: str, doc2: str) -> float:
-        """Calculate structural similarity based on document organization"""
-
-        def extract_structure(doc: str) -> List[str]:
-            """Extract structural elements (headers, lists, etc.)"""
-            structure = []
-
-            # Extract headers
-            headers = re.findall(r"^#+\s+(.+)$", doc, re.MULTILINE)
-            structure.extend([f"header:{h.strip()}" for h in headers])
-
-            # Extract list items
-            list_items = re.findall(r"^\s*[-*+]\s+(.+)$", doc, re.MULTILINE)
-            structure.extend([f"list:{item.strip()}" for item in list_items])
-
-            # Extract code blocks
-            code_blocks = re.findall(r"```[\s\S]*?```", doc)
-            structure.extend([f"code:block" for _ in code_blocks])
-
-            return structure
-
-        struct1 = extract_structure(doc1)
-        struct2 = extract_structure(doc2)
-
-        if not struct1 and not struct2:
-            return 1.0
-        if not struct1 or not struct2:
-            return 0.0
-
-        # Calculate Jaccard similarity
-        set1, set2 = set(struct1), set(struct2)
-        intersection = len(set1.intersection(set2))
-        union = len(set1.union(set2))
-
-        return intersection / union if union > 0 else 0.0
-
-    def _calculate_content_coverage(self, generated_doc: str, existing_doc: str) -> float:
-        """Calculate how much of the existing content is covered in the generated doc"""
-
-        def extract_key_concepts(doc: str) -> set:
-            """Extract key concepts from document"""
-            # Tokenize and filter
-            words = word_tokenize(doc.lower())
-            words = [w for w in words if w.isalpha() and w not in self.stop_words and len(w) > 3]
-
-            # Extract important phrases (simple bigrams)
-            bigrams = [f"{words[i]}_{words[i+1]}" for i in range(len(words) - 1)]
-
-            return set(words + bigrams)
-
-        concepts_existing = extract_key_concepts(existing_doc)
-        concepts_generated = extract_key_concepts(generated_doc)
-
-        if not concepts_existing:
-            return 1.0
-
-        covered = len(concepts_existing.intersection(concepts_generated))
-        total = len(concepts_existing)
-
-        return covered / total
-
     def _calculate_rouge_scores(self, generated_doc: str, existing_doc: str) -> Dict[str, float]:
         """Calculate ROUGE scores for document comparison"""
         try:
             scores = self.rouge_scorer.score(existing_doc, generated_doc)
             return {
                 "rouge1": scores["rouge1"].fmeasure,
-                "rouge2": scores["rouge2"].fmeasure,
                 "rougeL": scores["rougeL"].fmeasure,
             }
         except Exception:
-            return {"rouge1": 0.0, "rouge2": 0.0, "rougeL": 0.0}
+            return {"rouge1": 0.0, "rougeL": 0.0}
 
     def _calculate_bert_score(self, generated_doc: str, existing_doc: str) -> float:
         """Calculate BERTScore for semantic similarity"""
@@ -282,25 +236,6 @@ class DocumentationComparator:
         # Convert to similarity score (closer to 1.0 is better)
         return 1.0 - abs(1.0 - ratio)
 
-    def _calculate_section_coverage(self, generated_doc: str, existing_doc: str) -> float:
-        """Calculate how well the generated doc covers existing sections"""
-
-        def extract_sections(doc: str) -> set:
-            """Extract section headers"""
-            headers = re.findall(r"^#+\s+(.+)$", doc, re.MULTILINE)
-            return set([h.strip().lower() for h in headers])
-
-        sections_existing = extract_sections(existing_doc)
-        sections_generated = extract_sections(generated_doc)
-
-        if not sections_existing:
-            return 1.0
-
-        covered = len(sections_existing.intersection(sections_generated))
-        total = len(sections_existing)
-
-        return covered / total
-
     def _generate_detailed_analysis(
         self, generated_doc: str, existing_doc: str, metrics: ComparisonMetrics
     ) -> Dict[str, Any]:
@@ -315,17 +250,14 @@ class DocumentationComparator:
             "structure_analysis": {
                 "generated_headers": len(re.findall(r"^#+", generated_doc, re.MULTILINE)),
                 "existing_headers": len(re.findall(r"^#+", existing_doc, re.MULTILINE)),
-                "structural_similarity": metrics.structural_similarity,
             },
             "content_analysis": {
                 "semantic_similarity": metrics.semantic_similarity,
-                "content_coverage": metrics.content_coverage,
                 "rouge_scores": metrics.rouge_scores,
             },
             "quality_metrics": {
                 "bert_score": metrics.bert_score,
                 "readability_similarity": metrics.readability_score,
-                "section_coverage": metrics.section_coverage,
             },
         }
 
@@ -342,18 +274,6 @@ class DocumentationComparator:
                 "Consider improving semantic similarity by including more relevant technical terms and concepts from the original documentation."
             )
 
-        # Content coverage recommendations
-        if metrics.content_coverage < 0.6:
-            recommendations.append(
-                "The generated documentation misses significant content from the original. Consider expanding coverage of key topics."
-            )
-
-        # Structural recommendations
-        if metrics.structural_similarity < 0.5:
-            recommendations.append(
-                "Consider reorganizing the document structure to better match the original format and section organization."
-            )
-
         # Length recommendations
         if metrics.word_count_ratio < 0.7:
             recommendations.append(
@@ -364,12 +284,6 @@ class DocumentationComparator:
                 "The generated documentation is verbose. Consider condensing content while maintaining key information."
             )
 
-        # Section coverage recommendations
-        if metrics.section_coverage < 0.8:
-            recommendations.append(
-                "Some important sections from the original documentation are missing. Review and add missing sections."
-            )
-
         # ROUGE score recommendations
         if metrics.rouge_scores.get("rouge1", 0) < 0.4:
             recommendations.append(
@@ -377,7 +291,20 @@ class DocumentationComparator:
             )
 
         # Overall quality recommendation
-        overall_score = (metrics.semantic_similarity + metrics.content_coverage + metrics.structural_similarity) / 3
+        quality_scores = [
+            metrics.semantic_similarity,
+            metrics.bert_score,
+            metrics.readability_score,
+            metrics.word_count_ratio,
+            metrics.rouge_scores.get("rouge1", 0),
+            metrics.rouge_scores.get("rougeL", 0),
+        ]
+        if metrics.ragas_relevancy is not None:
+            quality_scores.append(metrics.ragas_relevancy)
+        if metrics.ragas_correctness is not None:
+            quality_scores.append(metrics.ragas_correctness)
+
+        overall_score = sum(quality_scores) / len(quality_scores) if quality_scores else 0
 
         if overall_score < 0.6:
             recommendations.append(
@@ -390,74 +317,74 @@ class DocumentationComparator:
 
         return recommendations
 
-    def _generate_diff_summary(self, generated_doc: str, existing_doc: str) -> str:
-        """Generate a summary of differences between documents"""
+    #     def _generate_diff_summary(self, generated_doc: str, existing_doc: str) -> str:
+    #         """Generate a summary of differences between documents"""
 
-        # Split documents into lines for comparison
-        generated_lines = generated_doc.splitlines()
-        existing_lines = existing_doc.splitlines()
+    #         # Split documents into lines for comparison
+    #         generated_lines = generated_doc.splitlines()
+    #         existing_lines = existing_doc.splitlines()
 
-        # Generate unified diff
-        diff = list(
-            difflib.unified_diff(
-                existing_lines, generated_lines, fromfile="existing_doc", tofile="generated_doc", lineterm=""
-            )
-        )
+    #         # Generate unified diff
+    #         diff = list(
+    #             difflib.unified_diff(
+    #                 existing_lines, generated_lines, fromfile="existing_doc", tofile="generated_doc", lineterm=""
+    #             )
+    #         )
 
-        # Count changes
-        additions = len([line for line in diff if line.startswith("+")])
-        deletions = len([line for line in diff if line.startswith("-")])
+    #         # Count changes
+    #         additions = len([line for line in diff if line.startswith("+")])
+    #         deletions = len([line for line in diff if line.startswith("-")])
 
-        summary = f"""
-Diff Summary:
-- Lines added: {additions}
-- Lines removed: {deletions}
-- Total changes: {additions + deletions}
+    #         summary = f"""
+    # Diff Summary:
+    # - Lines added: {additions}
+    # - Lines removed: {deletions}
+    # - Total changes: {additions + deletions}
 
-Key differences:
-{chr(10).join(diff[:20])}  # Show first 20 diff lines
-"""
+    # Key differences:
+    # {chr(10).join(diff[:20])}  # Show first 20 diff lines
+    # """
 
-        return summary
+    #         return summary
 
-    def _analyze_section_differences(self, generated_doc: str, existing_doc: str) -> Tuple[List[str], List[str]]:
-        """Analyze differences in sections between documents"""
+    # def _analyze_section_differences(self, generated_doc: str, existing_doc: str) -> Tuple[List[str], List[str]]:
+    #     """Analyze differences in sections between documents"""
 
-        def extract_sections(doc: str) -> List[str]:
-            """Extract section headers with context"""
-            sections = []
-            lines = doc.split("\n")
+    #     def extract_sections(doc: str) -> List[str]:
+    #         """Extract section headers with context"""
+    #         sections = []
+    #         lines = doc.split("\n")
 
-            for i, line in enumerate(lines):
-                if re.match(r"^#+\s+", line):
-                    # Get some context around the header
-                    context_start = max(0, i - 1)
-                    context_end = min(len(lines), i + 3)
-                    context = "\n".join(lines[context_start:context_end])
-                    sections.append(context)
+    #         for i, line in enumerate(lines):
+    #             if re.match(r"^#+\s+", line):
+    #                 # Get some context around the header
+    #                 context_start = max(0, i - 1)
+    #                 context_end = min(len(lines), i + 3)
+    #                 context = "\n".join(lines[context_start:context_end])
+    #                 sections.append(context)
 
-            return sections
+    #         return sections
 
-        existing_sections = extract_sections(existing_doc)
-        generated_sections = extract_sections(generated_doc)
+    #     existing_sections = extract_sections(existing_doc)
+    #     generated_sections = extract_sections(generated_doc)
 
-        # Simple string matching for section comparison
-        existing_headers = [
-            re.findall(r"^#+\s+(.+)$", section, re.MULTILINE)[0].strip()
-            for section in existing_sections
-            if re.findall(r"^#+\s+(.+)$", section, re.MULTILINE)
-        ]
+    #     # Simple string matching for section comparison
+    #     existing_headers = [
+    #         re.findall(r"^#+\s+(.+)$", section, re.MULTILINE)[0].strip()
+    #         for section in existing_sections
+    #         if re.findall(r"^#+\s+(.+)$", section, re.MULTILINE)
+    #     ]
 
-        generated_headers = [
-            re.findall(r"^#+\s+(.+)$", section, re.MULTILINE)[0].strip()
-            for section in generated_sections
-            if re.findall(r"^#+\s+(.+)$", section, re.MULTILINE)
-        ]
+    #     generated_headers = [
+    #         re.findall(r"^#+\s+(.+)$", section, re.MULTILINE)[0].strip()
+    #         for section in generated_sections
+    #         if re.findall(r"^#+\s+(.+)$", section, re.MULTILINE)
+    #     ]
 
-        missing_sections = [h for h in existing_headers if h not in generated_headers]
-        additional_sections = [h for h in generated_headers if h not in existing_headers]
+    #     missing_sections = [h for h in existing_headers if h not in generated_headers]
+    #     additional_sections = [h for h in generated_headers if h not in existing_headers]
 
-        return missing_sections, additional_sections
+    #     return missing_sections, additional_sections
 
     def compare_multiple_documents(
         self, generated_docs: List[Tuple[str, str]], existing_docs: List[Tuple[str, str]]
@@ -465,16 +392,33 @@ Key differences:
         """Compare multiple document pairs"""
 
         results = {}
-
-        # Create a mapping of document types
         existing_dict = {doc_type: content for doc_type, content in existing_docs}
 
         for doc_type, generated_content in generated_docs:
+            if doc_type == "comprehensive":
+                # Special handling for the comprehensive document
+                return self.compare_comprehensive_documentation(generated_content, existing_docs)
+
             if doc_type in existing_dict:
-                result = self.compare_documents(generated_content, existing_dict[doc_type], doc_type)
+                result = self.compare_documents(generated_content, existing_dict[doc_type])
                 results[doc_type] = result
 
         return results
+
+    def compare_comprehensive_documentation(
+        self, comprehensive_doc: str, existing_docs: List[Tuple[str, str]]
+    ) -> Dict[str, ComparisonResult]:
+        """Compare a single comprehensive document against all existing documentation combined."""
+        if not existing_docs:
+            return {}
+
+        aggregated_existing_content = "\n\n--- (New Document) ---\n\n".join(
+            [f"# Existing Document: {doc_type}\n\n{content}" for doc_type, content in existing_docs]
+        )
+
+        result = self.compare_documents(comprehensive_doc, aggregated_existing_content)
+
+        return {"comprehensive": result}
 
     def generate_comparison_report(self, comparison_results: Dict[str, ComparisonResult]) -> str:
         """Generate a comprehensive comparison report"""
@@ -484,12 +428,22 @@ Key differences:
         # Overall summary
         overall_scores = []
         for doc_type, result in comparison_results.items():
-            overall_score = (
-                result.metrics.semantic_similarity
-                + result.metrics.content_coverage
-                + result.metrics.structural_similarity
-            ) / 3
-            overall_scores.append(overall_score)
+            quality_scores = [
+                result.metrics.semantic_similarity,
+                result.metrics.bert_score,
+                result.metrics.readability_score,
+                result.metrics.word_count_ratio,
+                result.metrics.rouge_scores.get("rouge1", 0),
+                result.metrics.rouge_scores.get("rougeL", 0),
+            ]
+            if result.metrics.ragas_relevancy is not None:
+                quality_scores.append(result.metrics.ragas_relevancy)
+            if result.metrics.ragas_correctness is not None:
+                quality_scores.append(result.metrics.ragas_correctness)
+
+            if quality_scores:
+                overall_score = sum(quality_scores) / len(quality_scores)
+                overall_scores.append(overall_score)
 
         avg_score = sum(overall_scores) / len(overall_scores) if overall_scores else 0
 
@@ -502,27 +456,84 @@ Key differences:
 
             report += f"### Metrics\n"
             report += f"- Semantic Similarity: {result.metrics.semantic_similarity:.3f}\n"
-            report += f"- Content Coverage: {result.metrics.content_coverage:.3f}\n"
-            report += f"- Structural Similarity: {result.metrics.structural_similarity:.3f}\n"
             report += f"- ROUGE-1: {result.metrics.rouge_scores.get('rouge1', 0):.3f}\n"
             report += f"- BERTScore: {result.metrics.bert_score:.3f}\n"
-            report += f"- Section Coverage: {result.metrics.section_coverage:.3f}\n\n"
-
-            report += f"### Recommendations\n"
-            for rec in result.recommendations:
-                report += f"- {rec}\n"
+            if result.metrics.ragas_relevancy is not None:
+                report += f"- Ragas Answer Relevancy: {result.metrics.ragas_relevancy:.3f}\n"
+            if result.metrics.ragas_correctness is not None:
+                report += f"- Ragas Answer Correctness: {result.metrics.ragas_correctness:.3f}\n"
             report += "\n"
 
-            if result.missing_sections:
-                report += f"### Missing Sections\n"
-                for section in result.missing_sections:
-                    report += f"- {section}\n"
-                report += "\n"
+            # report += f"### Recommendations\n"
+            # for rec in result.recommendations:
+            #     report += f"- {rec}\n"
+            # report += "\n"
 
-            if result.additional_sections:
-                report += f"### Additional Sections\n"
-                for section in result.additional_sections:
-                    report += f"- {section}\n"
-                report += "\n"
+            # if result.missing_sections:
+            #     report += f"### Missing Sections\n"
+            #     for section in result.missing_sections:
+            #         report += f"- {section}\n"
+            #     report += "\n"
+
+            # if result.additional_sections:
+            #     report += f"### Additional Sections\n"
+            #     for section in result.additional_sections:
+            #         report += f"- {section}\n"
+            #     report += "\n"
 
         return report
+
+    def evaluate_with_ragas(self, generated_doc: str, existing_doc: str, question: str) -> Dict[str, float]:
+        """Evaluate documentation using Ragas"""
+        if not self.ragas_llm:
+            print("⚠️ Ragas LLM not initialized. Skipping Ragas evaluation.")
+            return {}
+
+        dataset_dict = {"question": [question], "answer": [generated_doc], "ground_truth": [existing_doc]}
+        dataset = Dataset.from_dict(dataset_dict)
+
+        metrics_to_use = [
+            answer_relevancy,
+            answer_correctness,
+        ]
+
+        try:
+            print("🤖 Running Ragas evaluation...")
+            result = evaluate(dataset, metrics=metrics_to_use, llm=self.ragas_llm)
+            print(f"✅ Ragas evaluation successful: {result}")
+            scores = {}
+
+            # Safely access Ragas results, which returns a list of scores.
+            try:
+                relevancy_list = result["answer_relevancy"]
+                if relevancy_list and len(relevancy_list) > 0:
+                    relevancy = relevancy_list[0]
+                    if isinstance(relevancy, float) and not np.isnan(relevancy):
+                        scores["answer_relevancy"] = relevancy
+                    else:
+                        scores["answer_relevancy"] = None
+                else:
+                    scores["answer_relevancy"] = None
+            except (KeyError, IndexError):
+                scores["answer_relevancy"] = None
+
+            try:
+                correctness_list = result["answer_correctness"]
+                if correctness_list and len(correctness_list) > 0:
+                    correctness = correctness_list[0]
+                    if isinstance(correctness, float) and not np.isnan(correctness):
+                        scores["answer_correctness"] = correctness
+                    else:
+                        scores["answer_correctness"] = None
+                else:
+                    scores["answer_correctness"] = None
+            except (KeyError, IndexError):
+                scores["answer_correctness"] = None
+
+            return scores
+        except Exception as e:
+            import traceback
+
+            print(f"❌ Ragas evaluation failed: {e}")
+            print(traceback.format_exc())
+            return {}

@@ -398,25 +398,35 @@ class CodeAnalyzer:
         )
 
     def _extract_description(self) -> str:
-        """Extract repository description from README or other sources"""
-        readme_files = ["README.md", "README.rst", "README.txt", "README"]
+        """Extract repository description from README or other sources by searching recursively."""
+        readme_patterns = ["README.md", "readme.md", "README.rst", "README.txt", "README"]
+        exclude_dirs = [".git", ".venv", "node_modules", "__pycache__", "dist", "build"]
 
-        for readme in readme_files:
-            readme_path = self.repo_path / readme
-            if readme_path.exists():
+        for pattern in readme_patterns:
+            found_files = list(self.repo_path.glob(f"**/{pattern}"))
+
+            for file_path in found_files:
+                if any(excluded in file_path.parts for excluded in exclude_dirs):
+                    continue
+
                 try:
-                    with open(readme_path, "r", encoding="utf-8") as f:
+                    with open(file_path, "r", encoding="utf-8") as f:
                         content = f.read()
 
-                    # Extract first paragraph or first non-header line
                     lines = content.split("\n")
                     for line in lines:
                         line = line.strip()
                         if line and not line.startswith("#") and not line.startswith("="):
+                            print(f"Extracted description from {file_path}")
                             return line[:200] + ("..." if len(line) > 200 else "")
-                except (UnicodeDecodeError, PermissionError):
+
+                    return "README found, but no suitable description line."
+
+                except (UnicodeDecodeError, PermissionError) as e:
+                    print(f"Could not read {file_path}: {e}")
                     continue
 
+        print("No README file found to extract a description.")
         return "No description available"
 
     def _find_entry_points(self, modules: List[ModuleInfo]) -> List[str]:
