@@ -35,7 +35,6 @@ class ComparisonMetrics:
     semantic_similarity: float
     rouge_scores: Dict[str, float]
     bert_score: float
-    readability_score: float
     # word_count_ratio: float
     ragas_relevancy: Optional[float] = None
     ragas_correctness: Optional[float] = None
@@ -84,7 +83,6 @@ class DocumentationComparator:
         semantic_similarity = self._calculate_semantic_similarity(generated_doc, existing_doc)
         rouge_scores = self._calculate_rouge_scores(generated_doc, existing_doc)
         bert_score_result = self._calculate_bert_score(generated_doc, existing_doc)
-        readability_score = self._calculate_readability_score(generated_doc, existing_doc)
 
         # Ragas evaluation
         ragas_scores = self.evaluate_with_ragas(
@@ -100,7 +98,6 @@ class DocumentationComparator:
             semantic_similarity=semantic_similarity,
             rouge_scores=rouge_scores,
             bert_score=bert_score_result,
-            readability_score=readability_score,
             ragas_relevancy=ragas_relevancy,
             ragas_correctness=ragas_correctness,
         )
@@ -154,69 +151,6 @@ class DocumentationComparator:
         except Exception:
             return 0.0
 
-    def _calculate_readability_score(self, generated_doc: str, existing_doc: str) -> float:
-        """Compare readability using Flesch-Kincaid metrics"""
-
-        def flesch_kincaid_score(text: str) -> float:
-            """Calculate Flesch-Kincaid readability score"""
-            sentences = sent_tokenize(text)
-            words = word_tokenize(text)
-
-            if len(sentences) == 0 or len(words) == 0:
-                return 0.0
-
-            avg_sentence_length = len(words) / len(sentences)
-
-            # Count syllables (simple approximation)
-            syllables = sum([self._count_syllables(word) for word in words])
-            avg_syllables = syllables / len(words)
-
-            # Flesch-Kincaid formula
-            score = 206.835 - (1.015 * avg_sentence_length) - (84.6 * avg_syllables)
-            return max(0, min(100, score))  # Clamp between 0-100
-
-        score_generated = flesch_kincaid_score(generated_doc)
-        score_existing = flesch_kincaid_score(existing_doc)
-
-        # Return similarity in readability scores
-        if score_existing == 0:
-            return 1.0
-
-        return 1.0 - abs(score_generated - score_existing) / 100.0
-
-    def _count_syllables(self, word: str) -> int:
-        """Simple syllable counting"""
-        word = word.lower()
-        vowels = "aeiouy"
-        syllable_count = 0
-        previous_char_was_vowel = False
-
-        for char in word:
-            if char in vowels:
-                if not previous_char_was_vowel:
-                    syllable_count += 1
-                previous_char_was_vowel = True
-            else:
-                previous_char_was_vowel = False
-
-        # Handle silent 'e'
-        if word.endswith("e") and syllable_count > 1:
-            syllable_count -= 1
-
-        return max(1, syllable_count)
-
-    # def _calculate_word_count_ratio(self, generated_doc: str, existing_doc: str) -> float:
-    #     """Calculate ratio of word counts"""
-    #     words_generated = len(word_tokenize(generated_doc))
-    #     words_existing = len(word_tokenize(existing_doc))
-
-    #     if words_existing == 0:
-    #         return 1.0 if words_generated == 0 else 0.0
-
-    #     ratio = words_generated / words_existing
-    #     # Convert to similarity score (closer to 1.0 is better)
-    #     return 1.0 - abs(1.0 - ratio)
-
     def _generate_detailed_analysis(
         self, generated_doc: str, existing_doc: str, metrics: ComparisonMetrics
     ) -> Dict[str, Any]:
@@ -238,80 +172,10 @@ class DocumentationComparator:
             },
             "quality_metrics": {
                 "bert_score": metrics.bert_score,
-                "readability_similarity": metrics.readability_score,
             },
         }
 
         return analysis
-
-    #     def _generate_diff_summary(self, generated_doc: str, existing_doc: str) -> str:
-    #         """Generate a summary of differences between documents"""
-
-    #         # Split documents into lines for comparison
-    #         generated_lines = generated_doc.splitlines()
-    #         existing_lines = existing_doc.splitlines()
-
-    #         # Generate unified diff
-    #         diff = list(
-    #             difflib.unified_diff(
-    #                 existing_lines, generated_lines, fromfile="existing_doc", tofile="generated_doc", lineterm=""
-    #             )
-    #         )
-
-    #         # Count changes
-    #         additions = len([line for line in diff if line.startswith("+")])
-    #         deletions = len([line for line in diff if line.startswith("-")])
-
-    #         summary = f"""
-    # Diff Summary:
-    # - Lines added: {additions}
-    # - Lines removed: {deletions}
-    # - Total changes: {additions + deletions}
-
-    # Key differences:
-    # {chr(10).join(diff[:20])}  # Show first 20 diff lines
-    # """
-
-    #         return summary
-
-    # def _analyze_section_differences(self, generated_doc: str, existing_doc: str) -> Tuple[List[str], List[str]]:
-    #     """Analyze differences in sections between documents"""
-
-    #     def extract_sections(doc: str) -> List[str]:
-    #         """Extract section headers with context"""
-    #         sections = []
-    #         lines = doc.split("\n")
-
-    #         for i, line in enumerate(lines):
-    #             if re.match(r"^#+\s+", line):
-    #                 # Get some context around the header
-    #                 context_start = max(0, i - 1)
-    #                 context_end = min(len(lines), i + 3)
-    #                 context = "\n".join(lines[context_start:context_end])
-    #                 sections.append(context)
-
-    #         return sections
-
-    #     existing_sections = extract_sections(existing_doc)
-    #     generated_sections = extract_sections(generated_doc)
-
-    #     # Simple string matching for section comparison
-    #     existing_headers = [
-    #         re.findall(r"^#+\s+(.+)$", section, re.MULTILINE)[0].strip()
-    #         for section in existing_sections
-    #         if re.findall(r"^#+\s+(.+)$", section, re.MULTILINE)
-    #     ]
-
-    #     generated_headers = [
-    #         re.findall(r"^#+\s+(.+)$", section, re.MULTILINE)[0].strip()
-    #         for section in generated_sections
-    #         if re.findall(r"^#+\s+(.+)$", section, re.MULTILINE)
-    #     ]
-
-    #     missing_sections = [h for h in existing_headers if h not in generated_headers]
-    #     additional_sections = [h for h in generated_headers if h not in existing_headers]
-
-    #     return missing_sections, additional_sections
 
     def compare_multiple_documents(
         self, generated_docs: List[Tuple[str, str]], existing_docs: List[Tuple[str, str]]
@@ -358,7 +222,6 @@ class DocumentationComparator:
             quality_scores = [
                 result.metrics.semantic_similarity,
                 result.metrics.bert_score,
-                result.metrics.readability_score,
                 result.metrics.rouge_scores.get("rouge1", 0),
                 result.metrics.rouge_scores.get("rougeL", 0),
             ]

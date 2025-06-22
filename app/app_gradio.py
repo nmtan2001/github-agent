@@ -271,8 +271,6 @@ The agent could not find an existing README.md to compare against. The generated
             quality_scores = [
                 result.metrics.semantic_similarity,
                 result.metrics.bert_score,
-                result.metrics.readability_score,
-                # result.metrics.word_count_ratio,
                 result.metrics.rouge_scores.get("rouge1", 0),
                 result.metrics.rouge_scores.get("rougeL", 0),
             ]
