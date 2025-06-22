@@ -104,7 +104,56 @@ The agent creates a single, comprehensive documentation file that combines all a
 
 *Perfect for creating complete project documentation from any codebase!*
 """
-        return walkthrough_md
+        help_md = """
+---
+## ❓ Help & Instructions
+
+## 🚀 How to Use
+
+**Step 1:** Configure your settings
+- Make sure your `OPENAI_API_KEY` is set in your `.env` file.
+- Set repository path or GitHub URL.
+- Choose your preferred model.
+
+**Step 2:** Generate comprehensive documentation
+- Click "Start Complete Workflow" to create a unified document.
+- Preview and download your documentation
+
+**Step 3:** Review README comparison
+- View how the new documentation compares to the original README
+- See similarity scores and coverage metrics
+
+## 📄 What Gets Generated
+A single comprehensive document that includes:
+- Project overview and features
+- Installation and setup instructions
+- Complete API reference
+- Usage examples and tutorials
+- Architecture documentation
+- Configuration guides
+- Troubleshooting and FAQ
+- Contributing guidelines
+
+## 📁 Repository Input Options
+- **Local path**: `./my-project` or `/path/to/repo`
+- **GitHub HTTPS**: `https://github.com/username/repo`
+- **GitHub SSH**: `git@github.com:username/repo.git`
+- **Short format**: `github.com/username/repo`
+
+## 💡 Model Recommendations
+- **GPT-4o**: Good quality, good for most projects
+- **GPT-4o-mini**: Cost-effective
+- **GPT-4.1-mini**: Improved capabilities
+- **o4-mini**: Reasoning model for complex tasks
+
+## 📊 README Comparison
+The system automatically compares your generated documentation with the original README to show:
+- Content coverage and gaps filled
+- Similarity metrics
+- Sections added beyond the original
+- Style consistency analysis
+"""
+        return walkthrough_md + "\n" + help_md
 
     def initialize_agent(self, model_name, repo_path):
         """Initialize the documentation agent"""
@@ -526,8 +575,8 @@ def create_interface():
         # Example Walkthrough Section
         with gr.Row():
             with gr.Column():
-                gr.HTML('<div class="section-box"><h2>🚀 Example Walkthrough</h2></div>')
-                with gr.Accordion("📖 Show Example Use Case", open=False):
+                gr.HTML('<div class="section-box"><h2>🚀 Example Walkthrough & Help</h2></div>')
+                with gr.Accordion("📖 Show Example & Instructions", open=False):
                     gr.Markdown(agent_interface.run_example_walkthrough())
 
         # Step 1: Configuration
@@ -585,59 +634,6 @@ def create_interface():
         with gr.Row(visible=True) as comparison_section:
             with gr.Column():
                 comparison_results_display = gr.Markdown("", label="README Comparison Analysis")
-
-        # Help Section
-        with gr.Row():
-            with gr.Column():
-                with gr.Accordion("❓ Help & Instructions", open=False):
-                    gr.Markdown(
-                        """
-                    ## 🚀 How to Use
-                    
-                    **Step 1:** Configure your settings
-                    - Make sure your `OPENAI_API_KEY` is set in your `.env` file.
-                    - Set repository path or GitHub URL.
-                    - Choose your preferred model.
-                    
-                    **Step 2:** Generate comprehensive documentation
-                    - Click "Start Complete Workflow" to create a unified document.
-                    - Preview and download your documentation
-                    
-                    **Step 3:** Review README comparison
-                    - View how the new documentation compares to the original README
-                    - See similarity scores and coverage metrics
-                    
-                    ## 📄 What Gets Generated
-                    A single comprehensive document that includes:
-                    - Project overview and features
-                    - Installation and setup instructions
-                    - Complete API reference
-                    - Usage examples and tutorials
-                    - Architecture documentation
-                    - Configuration guides
-                    - Troubleshooting and FAQ
-                    - Contributing guidelines
-                    
-                    ## 📁 Repository Input Options
-                    - **Local path**: `./my-project` or `/path/to/repo`
-                    - **GitHub HTTPS**: `https://github.com/username/repo`
-                    - **GitHub SSH**: `git@github.com:username/repo.git`
-                    - **Short format**: `github.com/username/repo`
-                    
-                    ## 💡 Model Recommendations
-                    - **GPT-4o**: Good quality, good for most projects
-                    - **GPT-4o-mini**: Cost-effective
-                    - **GPT-4.1-mini**: Improved capabilities
-                    - **o4-mini**: Reasoning model for complex tasks
-                    
-                    ## 📊 README Comparison
-                    The system automatically compares your generated documentation with the original README to show:
-                    - Content coverage and gaps filled
-                    - Similarity metrics
-                    - Sections added beyond the original
-                    - Style consistency analysis
-                    """
-                    )
 
         # Event handlers
         # Progressive workflow that updates UI after each step
