@@ -112,7 +112,6 @@ class DocumentationReport:
     comparison_results: Optional[Dict[str, ComparisonResult]]
     execution_time: float
     success_rate: float
-    recommendations: List[str]
 
 
 class DocumentationAgent:
@@ -546,8 +545,7 @@ class DocumentationAgent:
         total_generated = len(self.generated_docs)
         success_rate = total_generated / total_requested if total_requested > 0 else 0.0
 
-        # Generate overall recommendations
-        recommendations = self._generate_overall_recommendations()
+       
 
         report = DocumentationReport(
             repository_metadata=self.repository_metadata,
@@ -556,7 +554,6 @@ class DocumentationAgent:
             comparison_results=self.comparison_results if self.comparison_results else None,
             execution_time=0.0,  # Would need to track this
             success_rate=success_rate,
-            recommendations=recommendations,
         )
 
         # Save the report
@@ -750,56 +747,7 @@ class DocumentationAgent:
                 summary += f"- Content Coverage: {metrics.content_coverage:.3f}\n"
                 summary += f"- Structural Similarity: {metrics.structural_similarity:.3f}\n"
 
-        if report.recommendations:
-            summary += "\n## Recommendations\n"
-            for i, rec in enumerate(report.recommendations, 1):
-                summary += f"{i}. {rec}\n"
-
         return summary
-
-    def _generate_overall_recommendations(self) -> List[str]:
-        """Generate overall recommendations based on all analysis"""
-        recommendations = []
-
-        # Repository-level recommendations
-        if self.repository_metadata:
-            if self.repository_metadata.complexity_score > 10:
-                recommendations.append(
-                    "High code complexity detected. Consider refactoring complex functions and adding more detailed documentation."
-                )
-
-            if len(self.repository_metadata.dependencies) > 20:
-                recommendations.append(
-                    "Large number of dependencies detected. Consider documenting dependency management and version requirements."
-                )
-
-            if not self.repository_metadata.entry_points:
-                recommendations.append(
-                    "No clear entry points found. Consider adding main functions or improving code structure documentation."
-                )
-
-        # Documentation quality recommendations
-        if self.generated_docs:
-            # Check documentation word count as a quality indicator
-            avg_word_count = sum(doc.word_count for doc in self.generated_docs) / len(self.generated_docs)
-
-            if avg_word_count < 100:
-                recommendations.append(
-                    "Generated documentation appears brief. Consider reviewing and expanding the documentation for completeness."
-                )
-
-        # Comparison-based recommendations
-        if self.comparison_results:
-            for doc_type, result in self.comparison_results.items():
-                if result.metrics.semantic_similarity < 0.6:
-                    recommendations.append(
-                        f"The generated {doc_type} documentation differs significantly from existing documentation. Manual review recommended."
-                    )
-
-        # General recommendations
-        recommendations.append("Regularly update documentation as code evolves to maintain accuracy and relevance.")
-
-        return recommendations
 
     def get_analysis_summary(self) -> Dict[str, Any]:
         """Get a quick summary of the analysis results"""

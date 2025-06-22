@@ -301,7 +301,7 @@ The agent could not find an existing README.md to compare against. The generated
                 result.metrics.semantic_similarity,
                 result.metrics.bert_score,
                 result.metrics.readability_score,
-                result.metrics.word_count_ratio,
+                # result.metrics.word_count_ratio,
                 result.metrics.rouge_scores.get("rouge1", 0),
                 result.metrics.rouge_scores.get("rougeL", 0),
             ]
@@ -325,8 +325,8 @@ The agent could not find an existing README.md to compare against. The generated
 - **Semantic Similarity:** {result.metrics.semantic_similarity:.3f}
 - **ROUGE-1 Score:** {result.metrics.rouge_scores.get('rouge1', 0):.3f}
 - **ROUGE-L Score:** {result.metrics.rouge_scores.get('rougeL', 0):.3f}
-- **Word Count Ratio:** {result.metrics.word_count_ratio:.3f}
 """
+            # - **Word Count Ratio:** {result.metrics.word_count_ratio:.3f}
             if result.metrics.ragas_relevancy is not None:
                 comparison_content += f"- **Ragas Answer Relevancy:** {result.metrics.ragas_relevancy:.3f}\n"
             if result.metrics.ragas_correctness is not None:
@@ -606,7 +606,6 @@ def create_interface():
                     **Step 3:** Review README comparison
                     - View how the new documentation compares to the original README
                     - See similarity scores and coverage metrics
-                    - Get recommendations for improvement
                     
                     ## 📄 What Gets Generated
                     A single comprehensive document that includes:

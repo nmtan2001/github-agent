@@ -36,7 +36,7 @@ class ComparisonMetrics:
     rouge_scores: Dict[str, float]
     bert_score: float
     readability_score: float
-    word_count_ratio: float
+    # word_count_ratio: float
     ragas_relevancy: Optional[float] = None
     ragas_correctness: Optional[float] = None
 
@@ -47,10 +47,6 @@ class ComparisonResult:
 
     metrics: ComparisonMetrics
     detailed_analysis: Dict[str, Any]
-    recommendations: List[str]
-    # diff_summary: str
-    # missing_sections: List[str]
-    # additional_sections: List[str]
 
 
 class DocumentationComparator:
@@ -89,7 +85,6 @@ class DocumentationComparator:
         rouge_scores = self._calculate_rouge_scores(generated_doc, existing_doc)
         bert_score_result = self._calculate_bert_score(generated_doc, existing_doc)
         readability_score = self._calculate_readability_score(generated_doc, existing_doc)
-        word_count_ratio = self._calculate_word_count_ratio(generated_doc, existing_doc)
 
         # Ragas evaluation
         ragas_scores = self.evaluate_with_ragas(
@@ -106,7 +101,6 @@ class DocumentationComparator:
             rouge_scores=rouge_scores,
             bert_score=bert_score_result,
             readability_score=readability_score,
-            word_count_ratio=word_count_ratio,
             ragas_relevancy=ragas_relevancy,
             ragas_correctness=ragas_correctness,
         )
@@ -114,22 +108,9 @@ class DocumentationComparator:
         # Generate detailed analysis
         detailed_analysis = self._generate_detailed_analysis(generated_doc, existing_doc, metrics)
 
-        # Generate recommendations
-        recommendations = self._generate_recommendations(metrics, detailed_analysis)
-
-        # Generate diff summary
-        # diff_summary = self._generate_diff_summary(generated_doc, existing_doc)
-
-        # Find missing and additional sections
-        # missing_sections, additional_sections = self._analyze_section_differences(generated_doc, existing_doc)
-
         return ComparisonResult(
             metrics=metrics,
             detailed_analysis=detailed_analysis,
-            recommendations=recommendations,
-            # diff_summary=diff_summary,
-            # missing_sections=missing_sections,
-            # additional_sections=additional_sections,
         )
 
     def _calculate_semantic_similarity(self, doc1: str, doc2: str) -> float:
@@ -224,17 +205,17 @@ class DocumentationComparator:
 
         return max(1, syllable_count)
 
-    def _calculate_word_count_ratio(self, generated_doc: str, existing_doc: str) -> float:
-        """Calculate ratio of word counts"""
-        words_generated = len(word_tokenize(generated_doc))
-        words_existing = len(word_tokenize(existing_doc))
+    # def _calculate_word_count_ratio(self, generated_doc: str, existing_doc: str) -> float:
+    #     """Calculate ratio of word counts"""
+    #     words_generated = len(word_tokenize(generated_doc))
+    #     words_existing = len(word_tokenize(existing_doc))
 
-        if words_existing == 0:
-            return 1.0 if words_generated == 0 else 0.0
+    #     if words_existing == 0:
+    #         return 1.0 if words_generated == 0 else 0.0
 
-        ratio = words_generated / words_existing
-        # Convert to similarity score (closer to 1.0 is better)
-        return 1.0 - abs(1.0 - ratio)
+    #     ratio = words_generated / words_existing
+    #     # Convert to similarity score (closer to 1.0 is better)
+    #     return 1.0 - abs(1.0 - ratio)
 
     def _generate_detailed_analysis(
         self, generated_doc: str, existing_doc: str, metrics: ComparisonMetrics
@@ -245,7 +226,7 @@ class DocumentationComparator:
             "length_comparison": {
                 "generated_words": len(word_tokenize(generated_doc)),
                 "existing_words": len(word_tokenize(existing_doc)),
-                "length_ratio": metrics.word_count_ratio,
+                # "length_ratio": metrics.word_count_ratio,
             },
             "structure_analysis": {
                 "generated_headers": len(re.findall(r"^#+", generated_doc, re.MULTILINE)),
@@ -262,60 +243,6 @@ class DocumentationComparator:
         }
 
         return analysis
-
-    def _generate_recommendations(self, metrics: ComparisonMetrics, analysis: Dict[str, Any]) -> List[str]:
-        """Generate recommendations based on comparison results"""
-
-        recommendations = []
-
-        # Semantic similarity recommendations
-        if metrics.semantic_similarity < 0.7:
-            recommendations.append(
-                "Consider improving semantic similarity by including more relevant technical terms and concepts from the original documentation."
-            )
-
-        # Length recommendations
-        if metrics.word_count_ratio < 0.7:
-            recommendations.append(
-                "The generated documentation is significantly shorter. Consider adding more detailed explanations and examples."
-            )
-        elif metrics.word_count_ratio > 1.3:
-            recommendations.append(
-                "The generated documentation is verbose. Consider condensing content while maintaining key information."
-            )
-
-        # ROUGE score recommendations
-        if metrics.rouge_scores.get("rouge1", 0) < 0.4:
-            recommendations.append(
-                "Low word overlap with original documentation. Consider using more consistent terminology."
-            )
-
-        # Overall quality recommendation
-        quality_scores = [
-            metrics.semantic_similarity,
-            metrics.bert_score,
-            metrics.readability_score,
-            metrics.word_count_ratio,
-            metrics.rouge_scores.get("rouge1", 0),
-            metrics.rouge_scores.get("rougeL", 0),
-        ]
-        if metrics.ragas_relevancy is not None:
-            quality_scores.append(metrics.ragas_relevancy)
-        if metrics.ragas_correctness is not None:
-            quality_scores.append(metrics.ragas_correctness)
-
-        overall_score = sum(quality_scores) / len(quality_scores) if quality_scores else 0
-
-        if overall_score < 0.6:
-            recommendations.append(
-                "Overall documentation quality needs improvement. Consider regenerating with more specific prompts or manual review."
-            )
-        elif overall_score > 0.8:
-            recommendations.append(
-                "Excellent documentation quality! Minor refinements may further improve alignment with original."
-            )
-
-        return recommendations
 
     #     def _generate_diff_summary(self, generated_doc: str, existing_doc: str) -> str:
     #         """Generate a summary of differences between documents"""
@@ -432,7 +359,6 @@ class DocumentationComparator:
                 result.metrics.semantic_similarity,
                 result.metrics.bert_score,
                 result.metrics.readability_score,
-                result.metrics.word_count_ratio,
                 result.metrics.rouge_scores.get("rouge1", 0),
                 result.metrics.rouge_scores.get("rougeL", 0),
             ]
@@ -463,23 +389,6 @@ class DocumentationComparator:
             if result.metrics.ragas_correctness is not None:
                 report += f"- Ragas Answer Correctness: {result.metrics.ragas_correctness:.3f}\n"
             report += "\n"
-
-            # report += f"### Recommendations\n"
-            # for rec in result.recommendations:
-            #     report += f"- {rec}\n"
-            # report += "\n"
-
-            # if result.missing_sections:
-            #     report += f"### Missing Sections\n"
-            #     for section in result.missing_sections:
-            #         report += f"- {section}\n"
-            #     report += "\n"
-
-            # if result.additional_sections:
-            #     report += f"### Additional Sections\n"
-            #     for section in result.additional_sections:
-            #         report += f"- {section}\n"
-            #     report += "\n"
 
         return report
 
