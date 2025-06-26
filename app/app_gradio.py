@@ -44,67 +44,38 @@ class DocumentationAgentInterface:
 
     def run_example_walkthrough(self):
         """Run an example walkthrough with a demonstration repository"""
-        walkthrough_md = """
-# 🚀 Example Walkthrough: Comprehensive Documentation Generation
+        content_md = """
+# 🚀 Example Walkthrough & Instructions
 
-## 🎯 How It Works
-The agent creates a single, comprehensive documentation file that combines all aspects of your project:
+This agent analyzes a software repository to generate a single, comprehensive documentation file.
 
-### Flow:
-`Code Analysis + README Analysis → Comprehensive Document Generation → README Comparison`
+## 📋 Example Repositories
+- **Flask:** `https://github.com/pallets/flask`
+- **FastAPI:** `https://github.com/tiangolo/fastapi`
+- **Django:** `https://github.com/django/django`
 
-## 📋 Try These Examples:
-- **Flask Framework**: `https://github.com/pallets/flask`
-- **FastAPI**: `https://github.com/tiangolo/fastapi`
-- **Django**: `https://github.com/django/django`
+## ⚙️ How It Works
+1.  **Analyze:** The agent inspects the entire codebase, including existing documentation and READMEs.
+2.  **Generate:** It creates a unified document covering overview, API, usage, architecture, and more.
+3.  **Compare:** The new documentation is compared against the original README to show improvements.
 
-## 🔄 What the Agent Does:
+## 🚀 How to Use
+1.  **Configure:** Provide a local repository path or a GitHub URL. Make sure your `OPENAI_API_KEY` is in a `.env` file.
+2.  **Generate:** Click "Start Complete Workflow".
+3.  **Review:** Preview the generated documentation and the comparison report.
 
-### 1. 🔍 **Smart Analysis**
-- Analyzes your entire codebase structure
-- Identifies all modules, classes, and functions
-- Extracts existing documentation and docstrings
-- Finds and reads your original README
+## 💡 Model Recommendations
+- **GPT-4o**: Good quality, good for most projects
+- **GPT-4o-mini**: Cost-effective
+- **GPT-4.1-mini**: Improved capabilities
+- **o4-mini**: Reasoning model for complex tasks
 
-### 2. 📚 **Comprehensive Generation**
-- Creates a single, unified documentation file
-- Includes all essential sections in one place:
-  - Overview and features
-  - Installation instructions
-  - Complete API reference
-  - Usage examples
-  - Architecture details
-  - Configuration guides
-  - Troubleshooting
-  - Contributing guidelines
-
-### 3. 🧠 **Context-Aware Enhancement**
-- Uses your original README as context
-- Maintains your documentation style
-- Fills gaps in existing documentation
-- Expands on brief descriptions
-
-### 4. ⚖️ **README Comparison**
-- Compares the new comprehensive doc with your original README
-- Shows coverage improvements
-- Identifies new sections added
-- Provides similarity metrics
-
-## ✨ Expected Output:
-- **One comprehensive document** (10,000+ words typically)
-- **Complete project documentation** in a single file
-- **README comparison report** showing improvements
-- **Professional markdown formatting** ready for use
-
-## 📈 Benefits:
-- **All-in-one**: No need to maintain multiple doc files
-- **Comprehensive**: Covers every aspect of your project
-- **Consistent**: Unified style throughout
-- **README-aware**: Builds upon your existing documentation
-
-*Perfect for creating complete project documentation from any codebase!*
+## ✨ Benefits
+- **All-in-one:** A single document for your entire project.
+- **Comprehensive:** Covers all aspects from code to usage.
+- **Context-Aware:** Leverages your existing README for style and content.
 """
-        return walkthrough_md
+        return content_md
 
     def initialize_agent(self, model_name, repo_path):
         """Initialize the documentation agent"""
@@ -300,8 +271,6 @@ The agent could not find an existing README.md to compare against. The generated
             quality_scores = [
                 result.metrics.semantic_similarity,
                 result.metrics.bert_score,
-                result.metrics.readability_score,
-                result.metrics.word_count_ratio,
                 result.metrics.rouge_scores.get("rouge1", 0),
                 result.metrics.rouge_scores.get("rougeL", 0),
             ]
@@ -325,8 +294,8 @@ The agent could not find an existing README.md to compare against. The generated
 - **Semantic Similarity:** {result.metrics.semantic_similarity:.3f}
 - **ROUGE-1 Score:** {result.metrics.rouge_scores.get('rouge1', 0):.3f}
 - **ROUGE-L Score:** {result.metrics.rouge_scores.get('rougeL', 0):.3f}
-- **Word Count Ratio:** {result.metrics.word_count_ratio:.3f}
 """
+            # - **Word Count Ratio:** {result.metrics.word_count_ratio:.3f}
             if result.metrics.ragas_relevancy is not None:
                 comparison_content += f"- **Ragas Answer Relevancy:** {result.metrics.ragas_relevancy:.3f}\n"
             if result.metrics.ragas_correctness is not None:
@@ -526,8 +495,8 @@ def create_interface():
         # Example Walkthrough Section
         with gr.Row():
             with gr.Column():
-                gr.HTML('<div class="section-box"><h2>🚀 Example Walkthrough</h2></div>')
-                with gr.Accordion("📖 Show Example Use Case", open=False):
+                gr.HTML('<div class="section-box"><h2>🚀 Example Walkthrough & Help</h2></div>')
+                with gr.Accordion("📖 Show Example & Instructions", open=False):
                     gr.Markdown(agent_interface.run_example_walkthrough())
 
         # Step 1: Configuration
@@ -551,12 +520,6 @@ def create_interface():
                             value="gpt-4o-mini",
                             info="Choose the LLM model",
                         )
-
-                # Remove document type checkboxes - we'll generate one comprehensive document
-                gr.Markdown("**📚 Documentation Generation:**")
-                gr.Markdown(
-                    "The agent will generate a comprehensive documentation that includes all aspects: overview, API reference, tutorials, and architecture details."
-                )
 
                 init_btn = gr.Button("🚀 Start Complete Workflow", variant="primary", size="lg")
                 init_status = gr.Markdown("")
@@ -585,60 +548,6 @@ def create_interface():
         with gr.Row(visible=True) as comparison_section:
             with gr.Column():
                 comparison_results_display = gr.Markdown("", label="README Comparison Analysis")
-
-        # Help Section
-        with gr.Row():
-            with gr.Column():
-                with gr.Accordion("❓ Help & Instructions", open=False):
-                    gr.Markdown(
-                        """
-                    ## 🚀 How to Use
-                    
-                    **Step 1:** Configure your settings
-                    - Make sure your `OPENAI_API_KEY` is set in your `.env` file.
-                    - Set repository path or GitHub URL.
-                    - Choose your preferred model.
-                    
-                    **Step 2:** Generate comprehensive documentation
-                    - Click "Start Complete Workflow" to create a unified document.
-                    - Preview and download your documentation
-                    
-                    **Step 3:** Review README comparison
-                    - View how the new documentation compares to the original README
-                    - See similarity scores and coverage metrics
-                    - Get recommendations for improvement
-                    
-                    ## 📄 What Gets Generated
-                    A single comprehensive document that includes:
-                    - Project overview and features
-                    - Installation and setup instructions
-                    - Complete API reference
-                    - Usage examples and tutorials
-                    - Architecture documentation
-                    - Configuration guides
-                    - Troubleshooting and FAQ
-                    - Contributing guidelines
-                    
-                    ## 📁 Repository Input Options
-                    - **Local path**: `./my-project` or `/path/to/repo`
-                    - **GitHub HTTPS**: `https://github.com/username/repo`
-                    - **GitHub SSH**: `git@github.com:username/repo.git`
-                    - **Short format**: `github.com/username/repo`
-                    
-                    ## 💡 Model Recommendations
-                    - **GPT-4o**: Good quality, good for most projects
-                    - **GPT-4o-mini**: Cost-effective
-                    - **GPT-4.1-mini**: Improved capabilities
-                    - **o4-mini**: Reasoning model for complex tasks
-                    
-                    ## 📊 README Comparison
-                    The system automatically compares your generated documentation with the original README to show:
-                    - Content coverage and gaps filled
-                    - Similarity metrics
-                    - Sections added beyond the original
-                    - Style consistency analysis
-                    """
-                    )
 
         # Event handlers
         # Progressive workflow that updates UI after each step

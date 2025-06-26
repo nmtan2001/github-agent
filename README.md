@@ -1,6 +1,6 @@
 # 🤖 LLM Documentation Agent
 
-> **Personal Project Showcase**: AI-powered documentation generation using Large Language Models
+> **AI-powered documentation generation using Large Language Models** 
 
 An intelligent system that analyzes code repositories and automatically generates comprehensive documentation with quality assessment metrics.
 
@@ -20,8 +20,7 @@ git clone <repository-url>
 cd llm-documentation-agent
 pip install -r requirements.txt
 
-# Set API key and run
-export OPENAI_API_KEY="your-key-here"
+# Set API key in .env and run
 python3 app/run_gradio.py
 ```
 
